@@ -1,6 +1,8 @@
 @import "tailwindcss";
 
 @theme {
+  --variant-dark: selector(.dark);
+
   /* Brand Primary: Porto Blue (#005596) */
   --color-primary-50: #eef7ff;
   --color-primary-100: #d9edff;
@@ -30,6 +32,31 @@
   /* Semantic aliases for easier use */
   --color-brand-primary: var(--color-primary-700);
   --color-brand-secondary: var(--color-secondary-500);
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 :root {

@@ -3,8 +3,9 @@ import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useBusPositions } from '@/hooks/useBusPositions';
 import { useInterpolation } from '@/hooks/useInterpolation';
-import { MapStyleUrl } from '@/constants/mapStyles';
+import { MapStyleUrl, Theme } from '@/constants/mapStyles';
 import { BRAND_COLORS } from '@/constants/colors';
+import { cn } from '@/lib/utils';
 
 const PORTO_CENTER: [number, number] = [-8.6291, 41.1579];
 const INITIAL_ZOOM = 13;
@@ -16,9 +17,12 @@ const PORTO_BOUNDS: [[number, number], [number, number]] = [
 
 interface MapContainerProps {
   styleUrl: MapStyleUrl;
+  onSelectRoute: (routeId: string | null) => void;
+  selectedRouteId: string | null;
+  theme: Theme;
 }
 
-export const MapContainer = ({ styleUrl }: MapContainerProps) => {
+export const MapContainer = ({ styleUrl, onSelectRoute, selectedRouteId, theme }: MapContainerProps) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -42,10 +46,30 @@ export const MapContainer = ({ styleUrl }: MapContainerProps) => {
       type: 'circle',
       source: 'buses',
       paint: {
-        'circle-radius': 6,
-        'circle-color': BRAND_COLORS.primary,
-        'circle-stroke-width': 2,
-        'circle-stroke-color': '#ffffff'
+        'circle-radius': [
+          'case',
+          ['==', ['get', 'line'], selectedRouteId || ''],
+          10,
+          6
+        ],
+        'circle-color': [
+          'case',
+          ['==', ['get', 'line'], selectedRouteId || ''],
+          '#ffffff',
+          BRAND_COLORS.primary
+        ],
+        'circle-stroke-width': [
+          'case',
+          ['==', ['get', 'line'], selectedRouteId || ''],
+          4,
+          2
+        ],
+        'circle-stroke-color': [
+          'case',
+          ['==', ['get', 'line'], selectedRouteId || ''],
+          BRAND_COLORS.primary,
+          '#ffffff'
+        ]
       }
     });
   }, []);
@@ -67,6 +91,25 @@ export const MapContainer = ({ styleUrl }: MapContainerProps) => {
     map.on('load', () => {
       setIsLoaded(true);
       addBusesLayer(map);
+
+      // Add click handler for buses
+      map.on('click', 'buses-layer', (e) => {
+        if (e.features && e.features.length > 0) {
+          const feature = e.features[0];
+          const line = feature.properties?.line;
+          if (line) {
+            onSelectRoute(line);
+          }
+        }
+      });
+
+      // Change cursor on hover
+      map.on('mouseenter', 'buses-layer', () => {
+        map.getCanvas().style.cursor = 'pointer';
+      });
+      map.on('mouseleave', 'buses-layer', () => {
+        map.getCanvas().style.cursor = '';
+      });
     });
 
     map.on('style.load', () => {
@@ -81,6 +124,35 @@ export const MapContainer = ({ styleUrl }: MapContainerProps) => {
 
   useEffect(() => {
     if (mapRef.current && isLoaded) {
+      mapRef.current.setPaintProperty('buses-layer', 'circle-radius', [
+        'case',
+        ['==', ['get', 'line'], selectedRouteId || ''],
+        10,
+        6
+      ]);
+      mapRef.current.setPaintProperty('buses-layer', 'circle-color', [
+        'case',
+        ['==', ['get', 'line'], selectedRouteId || ''],
+        '#ffffff',
+        BRAND_COLORS.primary
+      ]);
+      mapRef.current.setPaintProperty('buses-layer', 'circle-stroke-width', [
+        'case',
+        ['==', ['get', 'line'], selectedRouteId || ''],
+        4,
+        2
+      ]);
+      mapRef.current.setPaintProperty('buses-layer', 'circle-stroke-color', [
+        'case',
+        ['==', ['get', 'line'], selectedRouteId || ''],
+        BRAND_COLORS.primary,
+        '#ffffff'
+      ]);
+    }
+  }, [selectedRouteId, isLoaded]);
+
+  useEffect(() => {
+    if (mapRef.current && isLoaded) {
       mapRef.current.setStyle(styleUrl);
     }
   }, [styleUrl, isLoaded]);
@@ -89,13 +161,19 @@ export const MapContainer = ({ styleUrl }: MapContainerProps) => {
     <div className="w-full h-full relative">
       <div ref={mapContainer} className="w-full h-full" />
       {!isLoaded && (
-        <div className="absolute inset-0 flex items-center justify-center bg-white dark:bg-neutral-900 transition-colors duration-500 z-20">
+        <div className={cn(
+          "absolute inset-0 flex items-center justify-center transition-colors duration-500 z-20",
+          theme === 'dark' ? "bg-neutral-950" : "bg-white"
+        )}>
           <div className="flex flex-col items-center gap-3">
             <div 
               className="w-10 h-10 border-4 border-t-transparent rounded-full animate-spin"
               style={{ borderColor: `${BRAND_COLORS.primary} transparent ${BRAND_COLORS.primary} ${BRAND_COLORS.primary}` }}
             ></div>
-            <p className="text-neutral-900 dark:text-white font-medium">Loading Porto map...</p>
+            <p className={cn(
+              "font-medium",
+              theme === 'dark' ? "text-white" : "text-neutral-900"
+            )}>Loading Porto map...</p>
           </div>
         </div>
       )}
