@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+@theme {
+  /* Brand Primary: Porto Blue (#005596) */
+  --color-primary-50: #eef7ff;
+  --color-primary-100: #d9edff;
+  --color-primary-200: #bce0ff;
+  --color-primary-300: #8ecfff;
+  --color-primary-400: #57b3ff;
+  --color-primary-500: #2f94ff;
+  --color-primary-600: #1a75ff;
+  --color-primary-700: #005596; /* Base Brand Color */
+  --color-primary-800: #0a49a3;
+  --color-primary-900: #0e3f82;
+  --color-primary-950: #0e274f;
+
+  /* Brand Secondary: Porto Yellow (#f6ae2d) */
+  --color-secondary-50: #fff9eb;
+  --color-secondary-100: #feefc7;
+  --color-secondary-200: #fde08a;
+  --color-secondary-300: #fbc94d;
+  --color-secondary-400: #f9b022;
+  --color-secondary-500: #f6ae2d; /* Base Brand Color */
+  --color-secondary-600: #d9820e;
+  --color-secondary-700: #b45f0e;
+  --color-secondary-800: #924a13;
+  --color-secondary-900: #783e14;
+  --color-secondary-950: #462006;
+
+  /* Semantic aliases for easier use */
+  --color-brand-primary: var(--color-primary-700);
+  --color-brand-secondary: var(--color-secondary-500);
+}
+
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+#root {
+  width: 100%;
+  height: 100vh;
+}
+
