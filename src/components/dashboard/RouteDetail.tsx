@@ -37,7 +37,7 @@ export const RouteDetail = ({ route, onBack, isDark = false }: RouteDetailProps)
         <button 
           onClick={onBack}
           className={cn(
-            "flex items-center gap-2 mb-6 px-3 py-1.5 rounded-lg transition-colors group",
+            "flex items-center gap-2 mb-6 px-3 py-1.5 rounded-lg transition-colors group cursor-pointer",
             isDark ? "hover:bg-neutral-800 text-neutral-400" : "hover:bg-neutral-100 text-neutral-500"
           )}
         >
@@ -87,7 +87,7 @@ export const RouteDetail = ({ route, onBack, isDark = false }: RouteDetailProps)
           <button
             onClick={() => setActiveDirection(0)}
             className={cn(
-              "flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all",
+              "flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all cursor-pointer",
               activeDirection === 0 
                 ? (isDark ? "bg-neutral-700 text-white shadow-sm" : "bg-white text-neutral-900 shadow-sm")
                 : "text-neutral-400 hover:text-neutral-600"
@@ -98,7 +98,7 @@ export const RouteDetail = ({ route, onBack, isDark = false }: RouteDetailProps)
           <button
             onClick={() => setActiveDirection(1)}
             className={cn(
-              "flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all",
+              "flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all cursor-pointer",
               activeDirection === 1 
                 ? (isDark ? "bg-neutral-700 text-white shadow-sm" : "bg-white text-neutral-900 shadow-sm")
                 : "text-neutral-400 hover:text-neutral-600"

@@ -37,5 +37,3 @@ export const BRAND_COLORS = {
   secondary: COLORS.secondary[500],
 };
 
-
-

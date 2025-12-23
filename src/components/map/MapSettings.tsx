@@ -29,7 +29,7 @@ export const MapSettings = ({ currentStyleId, onStyleChange, theme }: MapSetting
         type="button"
         onClick={handleToggleOpen}
         className={cn(
-          "p-2.5 rounded-full shadow-lg border transition-all hover:scale-105 active:scale-95",
+          "p-2.5 rounded-full shadow-lg border transition-all hover:scale-105 active:scale-95 cursor-pointer",
           isDark 
             ? "bg-neutral-900 border-neutral-800 ring-offset-neutral-950" 
             : "bg-white border-neutral-200 ring-offset-white",
@@ -77,7 +77,7 @@ export const MapSettings = ({ currentStyleId, onStyleChange, theme }: MapSetting
                     key={style.id}
                     onClick={() => handleStyleSelect(key)}
                     className={cn(
-                      "group w-full flex flex-col gap-2 p-2 rounded-xl transition-all duration-200 text-left",
+                      "group w-full flex flex-col gap-2 p-2 rounded-xl transition-all duration-200 text-left cursor-pointer",
                       isSelected 
                         ? (isDark ? "bg-brand-secondary/10 ring-1 ring-brand-secondary/30" : "bg-brand-primary/5 ring-1 ring-brand-primary/20")
                         : (isDark ? "hover:bg-neutral-800" : "hover:bg-neutral-50")

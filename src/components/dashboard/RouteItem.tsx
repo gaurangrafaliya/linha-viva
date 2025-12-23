@@ -36,7 +36,7 @@ export const RouteItem = ({ route, isSelected, onToggle, isDark = false }: Route
       <button
         onClick={handleToggle}
         onKeyDown={handleKeyDown}
-        className="w-full flex items-center gap-3 p-3 text-left focus:outline-none rounded-xl"
+        className="w-full flex items-center gap-3 p-3 text-left focus:outline-none rounded-xl cursor-pointer"
         aria-label={`Bus route ${route.shortName}: ${route.longName}`}
       >
         <div 

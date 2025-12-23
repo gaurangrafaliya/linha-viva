@@ -82,7 +82,7 @@ export const FloatingSearch = ({ searchTerm, onSearchChange, onClear, theme, isE
                   <button
                     onClick={onClear}
                     className={cn(
-                      "p-1 text-neutral-400 transition-colors",
+                      "p-1 text-neutral-400 transition-colors cursor-pointer",
                       isDark ? "hover:text-neutral-200" : "hover:text-neutral-600"
                     )}
                     aria-label="Clear search"

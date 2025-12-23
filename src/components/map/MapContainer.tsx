@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useBusPositions } from '@/hooks/useBusPositions';
-import { useInterpolation } from '@/hooks/useInterpolation';
 import { MapStyleUrl, Theme } from '@/constants/mapStyles';
 import { BRAND_COLORS } from '@/constants/colors';
 import { cn } from '@/lib/utils';
@@ -26,9 +25,17 @@ export const MapContainer = ({ styleUrl, onSelectRoute, selectedRouteId, theme }
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
-  
   const { positions } = useBusPositions();
-  useInterpolation(mapRef.current, positions);
+  const positionsRef = useRef(positions);
+  
+  useEffect(() => {
+    positionsRef.current = positions;
+  }, [positions]);
+
+  const selectedRouteIdRef = useRef(selectedRouteId);
+  useEffect(() => {
+    selectedRouteIdRef.current = selectedRouteId;
+  }, [selectedRouteId]);
 
   const addBusesLayer = useCallback((map: maplibregl.Map) => {
     if (map.getSource('buses')) return;
@@ -41,37 +48,40 @@ export const MapContainer = ({ styleUrl, onSelectRoute, selectedRouteId, theme }
       }
     });
 
-    map.addLayer({
-      id: 'buses-layer',
-      type: 'circle',
-      source: 'buses',
-      paint: {
+    if (!map.getLayer('buses-layer')) {
+      const currentRouteId = selectedRouteIdRef.current;
+      map.addLayer({
+        id: 'buses-layer',
+        type: 'circle',
+        source: 'buses',
+        paint: {
         'circle-radius': [
           'case',
-          ['==', ['get', 'line'], selectedRouteId || ''],
-          10,
-          6
+          ['==', ['get', 'line'], currentRouteId || ''],
+          12,
+          8
         ],
-        'circle-color': [
-          'case',
-          ['==', ['get', 'line'], selectedRouteId || ''],
-          '#ffffff',
-          BRAND_COLORS.primary
-        ],
-        'circle-stroke-width': [
-          'case',
-          ['==', ['get', 'line'], selectedRouteId || ''],
-          4,
-          2
-        ],
-        'circle-stroke-color': [
-          'case',
-          ['==', ['get', 'line'], selectedRouteId || ''],
-          BRAND_COLORS.primary,
-          '#ffffff'
-        ]
-      }
-    });
+          'circle-color': [
+            'case',
+            ['==', ['get', 'line'], currentRouteId || ''],
+            '#ffffff',
+            BRAND_COLORS.primary
+          ],
+          'circle-stroke-width': [
+            'case',
+            ['==', ['get', 'line'], currentRouteId || ''],
+            4,
+            2
+          ],
+          'circle-stroke-color': [
+            'case',
+            ['==', ['get', 'line'], currentRouteId || ''],
+            BRAND_COLORS.primary,
+            '#ffffff'
+          ]
+        }
+      });
+    }
   }, []);
 
   useEffect(() => {
@@ -114,21 +124,45 @@ export const MapContainer = ({ styleUrl, onSelectRoute, selectedRouteId, theme }
 
     map.on('style.load', () => {
       addBusesLayer(map);
+      const currentPositions = positionsRef.current;
+      if (currentPositions.length > 0) {
+        const source = map.getSource('buses') as maplibregl.GeoJSONSource;
+        if (source) {
+          const geoJsonData: GeoJSON.FeatureCollection = {
+            type: 'FeatureCollection',
+            features: currentPositions.map(bus => ({
+              type: 'Feature',
+              geometry: {
+                type: 'Point',
+                coordinates: [bus.longitude, bus.latitude],
+              },
+              properties: {
+                id: bus.id,
+                line: bus.line,
+                operator: bus.operator,
+                bearing: bus.bearing,
+                speed: bus.speed,
+              },
+            })),
+          };
+          source.setData(geoJsonData);
+        }
+      }
     });
 
     return () => {
       map.remove();
       mapRef.current = null;
     };
-  }, []);
+  }, [styleUrl]);
 
   useEffect(() => {
     if (mapRef.current && isLoaded) {
       mapRef.current.setPaintProperty('buses-layer', 'circle-radius', [
         'case',
         ['==', ['get', 'line'], selectedRouteId || ''],
-        10,
-        6
+        12,
+        8
       ]);
       mapRef.current.setPaintProperty('buses-layer', 'circle-color', [
         'case',
@@ -151,11 +185,59 @@ export const MapContainer = ({ styleUrl, onSelectRoute, selectedRouteId, theme }
     }
   }, [selectedRouteId, isLoaded]);
 
+  const currentStyleUrlRef = useRef<string | null>(null);
+  
   useEffect(() => {
-    if (mapRef.current && isLoaded) {
+    if (currentStyleUrlRef.current === null) {
+      currentStyleUrlRef.current = styleUrl;
+    }
+  }, [styleUrl]);
+  
+  useEffect(() => {
+    if (mapRef.current && isLoaded && currentStyleUrlRef.current !== styleUrl) {
+      currentStyleUrlRef.current = styleUrl;
       mapRef.current.setStyle(styleUrl);
     }
   }, [styleUrl, isLoaded]);
+
+  useEffect(() => {
+    if (!mapRef.current || !isLoaded) {
+      return;
+    }
+
+    const map = mapRef.current;
+    
+    const updateSource = () => {
+      let source = map.getSource('buses') as maplibregl.GeoJSONSource;
+      if (!source) {
+        addBusesLayer(map);
+        source = map.getSource('buses') as maplibregl.GeoJSONSource;
+        if (!source) return;
+      }
+
+      const geoJsonData: GeoJSON.FeatureCollection = {
+        type: 'FeatureCollection',
+        features: positions.map(bus => ({
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: [bus.longitude, bus.latitude],
+          },
+          properties: {
+            id: bus.id,
+            line: bus.line,
+            operator: bus.operator,
+            bearing: bus.bearing,
+            speed: bus.speed,
+          },
+        })),
+      };
+
+      source.setData(geoJsonData);
+    };
+
+    updateSource();
+  }, [positions, isLoaded, addBusesLayer]);
 
   return (
     <div className="w-full h-full relative">

@@ -236,7 +236,7 @@ export const RouteDashboard = ({
                         </p>
                       </div>
                       <button 
-                        className="p-2.5 text-neutral-400 hover:text-brand-primary hover:bg-brand-primary/5 rounded-xl transition-all"
+                        className="p-2.5 text-neutral-400 hover:text-brand-primary hover:bg-brand-primary/5 rounded-xl transition-all cursor-pointer"
                         aria-label="Filter routes"
                       >
                         <Filter size={18} strokeWidth={2.5} />
@@ -319,7 +319,7 @@ export const RouteDashboard = ({
         <button
           onClick={onToggleExpand}
           className={cn(
-            "absolute top-1/2 -translate-y-1/2 w-8 h-12 border shadow-xl pointer-events-auto flex items-center justify-center text-neutral-400 hover:text-brand-primary transition-all group z-40 focus:outline-none rounded-xl",
+            "absolute top-1/2 -translate-y-1/2 w-8 h-12 border shadow-xl pointer-events-auto flex items-center justify-center text-neutral-400 hover:text-brand-primary transition-all group z-40 focus:outline-none rounded-xl cursor-pointer",
             isDark ? "bg-neutral-900 border-neutral-800" : "bg-white border-neutral-200",
             isExpanded ? "-right-4" : "-left-1"
           )}
