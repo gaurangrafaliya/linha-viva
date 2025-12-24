@@ -1,7 +1,7 @@
 /**
  * Linha Viva Porto Color Palette
  * Derived from Porto/STCP branding.
- */
+*/
 
 export const COLORS = {
   primary: {
@@ -12,7 +12,7 @@ export const COLORS = {
     400: '#57b3ff',
     500: '#2f94ff',
     600: '#1a75ff',
-    700: '#005596', // Base Brand Color
+    700: '#005596',
     800: '#0a49a3',
     900: '#0e3f82',
     950: '#0e274f',
@@ -23,7 +23,7 @@ export const COLORS = {
     200: '#fde08a',
     300: '#fbc94d',
     400: '#f9b022',
-    500: '#f6ae2d', // Base Brand Color
+    500: '#f6ae2d',
     600: '#d9820e',
     700: '#b45f0e',
     800: '#924a13',

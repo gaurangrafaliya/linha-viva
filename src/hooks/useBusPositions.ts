@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { busService } from '@/services/busService';
 import { BusPosition } from '@/types/bus';
 
-const REFRESH_INTERVAL = 15000; // 15 seconds
+const REFRESH_INTERVAL = 15000;
 
 export const useBusPositions = () => {
   const [positions, setPositions] = useState<BusPosition[]>([]);

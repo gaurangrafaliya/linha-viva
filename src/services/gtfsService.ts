@@ -1,12 +1,13 @@
 import { GTFSRoute, GTFSTrip, GTFSStop, GTFSStopTime, GTFSShape } from "@/types/gtfs";
+import { WorkerMessageType } from "@/enums/worker";
+import { GtfsCacheKey } from "@/enums/cache";
+import { BusDirection } from "@/enums/direction";
 
 const DATA_PATH = '/data/stcp';
-
-// Create worker for parsing
 const worker = new Worker(new URL('./csvWorker.ts', import.meta.url), { type: 'module' });
 
 let lastRequestId = 0;
-const workerParse = (type: string, text?: string, data?: any): Promise<any> => {
+const workerParse = <T = any>(type: WorkerMessageType, text?: string, data?: any): Promise<T> => {
   const requestId = ++lastRequestId;
   return new Promise((resolve) => {
     const handleMessage = (e: MessageEvent) => {
@@ -27,7 +28,6 @@ let cachedStopTimes: GTFSStopTime[] | null = null;
 let cachedTripsByRoute: Map<string, GTFSTrip[]> | null = null;
 let cachedShapes: Map<string, GTFSShape[]> | null = null;
 
-// Track ongoing requests to prevent duplicate parsing
 const ongoingRequests = new Map<string, Promise<any>>();
 
 const getOrFetch = async <T>(key: string, fetchFn: () => Promise<T>): Promise<T> => {
@@ -42,13 +42,13 @@ const getOrFetch = async <T>(key: string, fetchFn: () => Promise<T>): Promise<T>
 export const gtfsService = {
   fetchRoutes: async (): Promise<GTFSRoute[]> => {
     if (cachedRoutes) return cachedRoutes;
-    return getOrFetch('routes', async () => {
+    return getOrFetch(GtfsCacheKey.ROUTES, async () => {
       try {
         const response = await fetch(`${DATA_PATH}/routes.txt`);
         const text = await response.text();
-        const data = await workerParse('PARSE_CSV', text);
+        const data = await workerParse<any[]>(WorkerMessageType.PARSE_CSV, text);
 
-        cachedRoutes = data.map((item: any) => ({
+        cachedRoutes = data.map((item) => ({
           id: item.route_id,
           shortName: item.route_short_name,
           longName: item.route_long_name,
@@ -67,17 +67,17 @@ export const gtfsService = {
 
   fetchAllTrips: async (): Promise<GTFSTrip[]> => {
     if (cachedTrips) return cachedTrips;
-    return getOrFetch('trips', async () => {
+    return getOrFetch(GtfsCacheKey.TRIPS, async () => {
       try {
         const response = await fetch(`${DATA_PATH}/trips.txt`);
         const text = await response.text();
-        const data = await workerParse('PARSE_CSV', text);
+        const data = await workerParse<any[]>(WorkerMessageType.PARSE_CSV, text);
 
-        cachedTrips = data.map((item: any) => ({
+        cachedTrips = data.map((item) => ({
           routeId: item.route_id,
           tripId: item.trip_id,
           headsign: item.trip_headsign || 'Unknown Destination',
-          directionId: parseInt(item.direction_id) || 0,
+          directionId: (parseInt(item.direction_id) === 1 ? BusDirection.INBOUND : BusDirection.OUTBOUND),
           shapeId: item.shape_id,
         }));
         
@@ -107,13 +107,13 @@ export const gtfsService = {
 
   fetchStopTimes: async (): Promise<GTFSStopTime[]> => {
     if (cachedStopTimes) return cachedStopTimes;
-    return getOrFetch('stop_times', async () => {
+    return getOrFetch(GtfsCacheKey.STOP_TIMES, async () => {
       try {
         const response = await fetch(`${DATA_PATH}/stop_times.txt`);
         const text = await response.text();
-        const data = await workerParse('PARSE_CSV', text);
+        const data = await workerParse<any[]>(WorkerMessageType.PARSE_CSV, text);
 
-        cachedStopTimes = data.map((item: any) => ({
+        cachedStopTimes = data.map((item) => ({
           tripId: item.trip_id,
           arrivalTime: item.arrival_time,
           departureTime: item.departure_time,
@@ -130,13 +130,13 @@ export const gtfsService = {
 
   fetchStops: async (): Promise<GTFSStop[]> => {
     if (cachedStops) return cachedStops;
-    return getOrFetch('stops', async () => {
+    return getOrFetch(GtfsCacheKey.STOPS, async () => {
       try {
         const response = await fetch(`${DATA_PATH}/stops.txt`);
         const text = await response.text();
-        const data = await workerParse('PARSE_CSV', text);
+        const data = await workerParse<any[]>(WorkerMessageType.PARSE_CSV, text);
 
-        cachedStops = data.map((item: any) => ({
+        cachedStops = data.map((item) => ({
           id: item.stop_id,
           name: item.stop_name,
           lat: parseFloat(item.stop_lat),
@@ -160,7 +160,6 @@ export const gtfsService = {
     const route = routes.find(r => r.id === routeId);
     const terminals = route?.longName.split(' - ').map(t => t.trim().toLowerCase()) || [];
 
-    // Pre-calculate stop counts for trips in this route
     const tripIdSet = new Set(trips.map(t => t.tripId));
     const counts = new Map<string, number>();
     allStopTimes.forEach(st => {
@@ -169,7 +168,7 @@ export const gtfsService = {
       }
     });
 
-    const getBestTrip = (directionId: number) => {
+    const getBestTrip = (directionId: BusDirection) => {
       const directionTrips = trips.filter(t => t.directionId === directionId);
       if (directionTrips.length === 0) return null;
 
@@ -177,10 +176,9 @@ export const gtfsService = {
         const stopCount = counts.get(trip.tripId) || 0;
         const headsign = trip.headsign.toLowerCase();
         
-        // Boost score if headsign matches one of the terminals in route long name
         let score = stopCount;
         if (terminals.some(t => headsign.includes(t) || t.includes(headsign))) {
-          score += 1000; // Large boost to prioritize main route trips
+          score += 1000;
         }
         
         return { trip, score };
@@ -192,8 +190,8 @@ export const gtfsService = {
     };
 
     return {
-      direction0: getBestTrip(0),
-      direction1: getBestTrip(1),
+      direction0: getBestTrip(BusDirection.OUTBOUND),
+      direction1: getBestTrip(BusDirection.INBOUND),
     };
   },
 
@@ -231,13 +229,12 @@ export const gtfsService = {
 
     if (!cachedShapes) {
       cachedShapes = new Map();
-      return getOrFetch('all_shapes', async () => {
+      return getOrFetch(GtfsCacheKey.ALL_SHAPES, async () => {
         try {
           const response = await fetch(`${DATA_PATH}/shapes.txt`);
           const text = await response.text();
-          const shapesObj = await workerParse('PROCESS_SHAPES', text);
+          const shapesObj = await workerParse(WorkerMessageType.PROCESS_SHAPES, text);
 
-          // The worker returns a plain object now
           cachedShapes = new Map(Object.entries(shapesObj));
           
           return cachedShapes!.get(shapeId) || [];
@@ -252,7 +249,7 @@ export const gtfsService = {
   },
 
   calculateStopPositions: async (stops: GTFSStop[], shape: { lat: number, lng: number }[]): Promise<number[]> => {
-    const result = await workerParse('CALCULATE_STOP_POSITIONS', undefined, { stops, shape });
+    const result = await workerParse(WorkerMessageType.CALCULATE_STOP_POSITIONS, undefined, { stops, shape });
     return result;
   }
 };

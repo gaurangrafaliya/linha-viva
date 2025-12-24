@@ -6,7 +6,7 @@ export interface FiwareProperty<T> {
 
 export interface FiwareGeoJsonPoint {
   type: 'Point';
-  coordinates: [number, number]; // [longitude, latitude]
+  coordinates: [number, number];
 }
 
 export interface FiwareStructuredValue {

@@ -1,24 +1,24 @@
 import { Search, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import logo from "@/assets/logo.png";
-import { cn } from "@/lib/utils";
 import { memo } from "react";
+import { useAppContext } from "@/context/AppContext";
 
-interface FloatingSearchProps {
-  searchTerm: string;
-  onSearchChange: (value: string) => void;
-  onClear: () => void;
-  isExpanded: boolean;
-}
+export const FloatingSearch = memo(() => {
+  const { 
+    searchTerm, 
+    handleSearchChange, 
+    handleClearSearch, 
+    isDashboardExpanded 
+  } = useAppContext();
 
-export const FloatingSearch = memo(({ searchTerm, onSearchChange, onClear, isExpanded }: FloatingSearchProps) => {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    onSearchChange(e.target.value);
+    handleSearchChange(e.target.value);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
-      onClear();
+      handleClearSearch();
     }
   };
 
@@ -43,7 +43,7 @@ export const FloatingSearch = memo(({ searchTerm, onSearchChange, onClear, isExp
 
       {/* Search Bar - Animated Presence */}
       <AnimatePresence>
-        {isExpanded && (
+        {isDashboardExpanded && (
           <motion.div 
             initial={{ x: -10, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
@@ -68,7 +68,7 @@ export const FloatingSearch = memo(({ searchTerm, onSearchChange, onClear, isExp
                 />
                 {searchTerm && (
                   <button
-                    onClick={onClear}
+                    onClick={handleClearSearch}
                     className="p-1 text-neutral-400 transition-colors cursor-pointer hover:text-neutral-600"
                     aria-label="Clear search"
                   >
@@ -83,4 +83,3 @@ export const FloatingSearch = memo(({ searchTerm, onSearchChange, onClear, isExp
     </div>
   );
 });
-

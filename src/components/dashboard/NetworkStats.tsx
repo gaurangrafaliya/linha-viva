@@ -1,15 +1,10 @@
 import { useState, memo, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bus, Flame, Clock, MapPin, Activity, ChevronDown, ChevronUp, BarChart3 } from "lucide-react";
-import { BusPosition } from "@/types/bus";
+import { Bus, Flame, Clock, MapPin, Activity, ChevronUp, BarChart3 } from "lucide-react";
+import { useAppContext } from "@/context/AppContext";
 
-export interface NetworkStatsProps {
-  positions: BusPosition[];
-  totalRoutesCount: number;
-  loading?: boolean;
-}
-
-export const NetworkStats = memo(({ positions, totalRoutesCount, loading }: NetworkStatsProps) => {
+export const NetworkStats = memo(() => {
+  const { positions, totalRoutesCount } = useAppContext();
   const [isExpanded, setIsExpanded] = useState(true);
   
   const stats = useMemo(() => {
@@ -35,7 +30,6 @@ export const NetworkStats = memo(({ positions, totalRoutesCount, loading }: Netw
     const busiestLine = Object.entries(lineCounts).sort((a, b) => b[1] - a[1])[0];
     const avgSpeed = speedCount > 0 ? (totalSpeed / speedCount) * 3.6 : 0; // Convert to km/h
 
-    // Simulated late buses
     const lateCount = Math.floor(positions.length * 0.14); 
     const onTimeRate = 100 - (lateCount / positions.length * 100);
     const latePercentage = Math.round((lateCount / positions.length) * 100);
@@ -47,17 +41,17 @@ export const NetworkStats = memo(({ positions, totalRoutesCount, loading }: Netw
       busiestLine: busiestLine ? { name: busiestLine[0], count: busiestLine[1] } : null,
       lateCount,
       latePercentage,
-      avgDelay: 3, // Simulated average delay in minutes
+      avgDelay: 3, 
       onTimeRate,
       avgSpeed,
       nightBuses
     };
   }, [positions, totalRoutesCount]);
 
-  if (loading || !stats) return null;
+  if (!stats) return null;
 
   return (
-    <div className="flex flex-col items-end gap-3">
+    <div className="fixed top-6 right-6 z-50 flex flex-col items-end gap-3">
       <AnimatePresence mode="wait">
         {!isExpanded ? (
           <motion.button
@@ -80,7 +74,6 @@ export const NetworkStats = memo(({ positions, totalRoutesCount, loading }: Netw
             transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
             className="bg-white/95 backdrop-blur-xl p-6 rounded-3xl border border-neutral-200/50 shadow-[0_20px_50px_rgba(0,0,0,0.08)] min-w-[280px] flex flex-col gap-6 relative"
           >
-            {/* Header with Live Status & Toggle */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
@@ -100,9 +93,7 @@ export const NetworkStats = memo(({ positions, totalRoutesCount, loading }: Netw
               </div>
             </div>
 
-            {/* Stats Grid Layout */}
             <div className="flex flex-col gap-6">
-              {/* Top Row: 3 Stats */}
               <div className="grid grid-cols-3 gap-2">
                 <div className="flex flex-col items-center gap-1.5 p-3 rounded-2xl bg-neutral-50/50 border border-neutral-100">
                   <Bus size={16} className="text-neutral-400" strokeWidth={2.5} />
@@ -129,7 +120,6 @@ export const NetworkStats = memo(({ positions, totalRoutesCount, loading }: Netw
                 </div>
               </div>
 
-              {/* Bottom Row: 2 Stats */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="flex flex-col items-center gap-2 p-4 rounded-2xl bg-green-50/50 border border-green-100/50">
                   <div className="p-2 rounded-xl bg-green-500/10 text-green-600">
@@ -153,7 +143,6 @@ export const NetworkStats = memo(({ positions, totalRoutesCount, loading }: Netw
               </div>
             </div>
 
-            {/* Footer Signature */}
             <div className="pt-4 border-t border-neutral-100 flex justify-center">
               <a 
                 href="https://github.com/davidrocha9"
@@ -170,4 +159,3 @@ export const NetworkStats = memo(({ positions, totalRoutesCount, loading }: Netw
     </div>
   );
 });
-

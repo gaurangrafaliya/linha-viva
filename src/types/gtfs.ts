@@ -1,3 +1,5 @@
+import { BusDirection } from "@/enums/direction";
+
 export interface GTFSStop {
   id: string;
   name: string;
@@ -19,7 +21,7 @@ export interface GTFSTrip {
   routeId: string;
   tripId: string;
   headsign: string;
-  directionId: number;
+  directionId: BusDirection;
   shapeId: string;
 }
 

@@ -12,11 +12,17 @@ export interface BusPosition {
 export interface InterpolatedBus {
   id: string;
   line: string;
-  currentPos: [number, number]; // [lng, lat]
-  previousPos: [number, number]; // [lng, lat]
-  nextPos: [number, number]; // [lng, lat]
+  currentPos: [number, number];
+  previousPos: [number, number];
+  nextPos: [number, number];
   startTime: number;
   endTime: number;
   bearing: number;
+}
+
+export interface SelectedBus {
+  id: string;
+  line: string;
+  routeId: string | null;
 }
 
