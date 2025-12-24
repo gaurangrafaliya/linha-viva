@@ -108,15 +108,13 @@ export const useMapInstance = (
             'case',
             ['get', 'isSelected'], 1,
             ['get', 'hasSelectedBus'], 0.3,
-            ['boolean', ['get', 'isFiltered'], true], 1,
-            0.15
+            1
           ],
           'circle-stroke-opacity': [
             'case',
             ['get', 'isSelected'], 1,
             ['get', 'hasSelectedBus'], 0.3,
-            ['boolean', ['get', 'isFiltered'], true], 1,
-            0.15
+            1
           ]
         }
       });
@@ -138,8 +136,7 @@ export const useMapInstance = (
             'case',
             ['get', 'isSelected'], 1,
             ['get', 'hasSelectedBus'], 0.3,
-            ['boolean', ['get', 'isFiltered'], true], 1,
-            0.15
+            1
           ]
         }
       });

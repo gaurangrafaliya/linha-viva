@@ -34,11 +34,14 @@ export const useBusLayer = (
     const hasFilter = selectedLines.length > 0;
     const hasSelectedBus = selectedBus !== null;
 
-    const features = positions.map(bus => {
+    const filteredPositions = hasFilter 
+      ? positions.filter(bus => selectedLines.includes(bus.line))
+      : positions;
+
+    const features = filteredPositions.map(bus => {
       const routeId = tripsRef.current.get(bus.line);
       const route = routeId ? routesRef.current.get(routeId) : null;
       const routeColor = route?.color ? `#${route.color}` : BRAND_COLORS.primary;
-      const isFiltered = !hasFilter || selectedLines.includes(bus.line);
       const isSelected = selectedBus !== null && bus.id === selectedBus.id;
       
       const feature = {
@@ -50,7 +53,6 @@ export const useBusLayer = (
           bearing: bus.bearing || 0,
           color: routeColor,
           textColor: getLuminance(routeColor) > 0.7 ? '#000000' : '#ffffff',
-          isFiltered,
           hasSelectedBus,
           isSelected
         },
@@ -68,7 +70,7 @@ export const useBusLayer = (
       features
     });
 
-    positions.forEach(bus => {
+    filteredPositions.forEach(bus => {
       mapRef.current?.setFeatureState(
         { source: 'buses', id: bus.id },
         { selected: false }
@@ -89,8 +91,7 @@ export const useBusLayer = (
         'case',
         ['get', 'isSelected'], 1,
         ['get', 'hasSelectedBus'], 0.3,
-        ['boolean', ['get', 'isFiltered'], true], 1,
-        0.15
+        1
       ] as any;
 
       if (mapRef.current.getLayer('bus-circles')) {
