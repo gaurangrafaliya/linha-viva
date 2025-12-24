@@ -120,16 +120,18 @@ export const useBusLayer = (
       const targetZoom = Math.max(currentZoom, 15);
       
       if (Math.abs(currentZoom - targetZoom) < 0.5) {
-        mapRef.current.jumpTo({
+        mapRef.current.easeTo({
           center: [bus.longitude, bus.latitude],
-          padding: { top: 0, bottom: 0, left: isDashboardExpanded ? 400 : 0, right: 0 }
+          padding: { top: 0, bottom: 0, left: isDashboardExpanded ? 200 : 0, right: 0 },
+          duration: 300,
+          essential: true
         });
       } else {
         mapRef.current.flyTo({
           center: [bus.longitude, bus.latitude],
           zoom: targetZoom,
           duration: 400,
-          padding: { top: 0, bottom: 0, left: isDashboardExpanded ? 400 : 0, right: 0 },
+          padding: { top: 0, bottom: 0, left: isDashboardExpanded ? 200 : 0, right: 0 },
           essential: true
         });
       }
