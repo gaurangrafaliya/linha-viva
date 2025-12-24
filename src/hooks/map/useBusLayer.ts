@@ -84,35 +84,29 @@ export const useBusLayer = (
       );
     }
 
-    setTimeout(() => {
-      if (!mapRef.current) return;
-      
-      const opacityExpression = [
+    const opacityExpression = [
+      'case',
+      ['get', 'isSelected'], 1,
+      ['get', 'hasSelectedBus'], 0.3,
+      1
+    ] as any;
+
+    if (mapRef.current.getLayer('bus-circles')) {
+      mapRef.current.setPaintProperty('bus-circles', 'circle-opacity', opacityExpression);
+      mapRef.current.setPaintProperty('bus-circles', 'circle-stroke-opacity', opacityExpression);
+    }
+    if (mapRef.current.getLayer('bus-labels')) {
+      mapRef.current.setPaintProperty('bus-labels', 'text-opacity', opacityExpression);
+    }
+    if (mapRef.current.getLayer('bus-arrows')) {
+      const arrowOpacityExpression = [
         'case',
-        ['get', 'isSelected'], 1,
+        ['get', 'isSelected'], 0.8,
         ['get', 'hasSelectedBus'], 0.3,
-        1
+        0.8
       ] as any;
-
-      if (mapRef.current.getLayer('bus-circles')) {
-        mapRef.current.setPaintProperty('bus-circles', 'circle-opacity', opacityExpression);
-        mapRef.current.setPaintProperty('bus-circles', 'circle-stroke-opacity', opacityExpression);
-      }
-      if (mapRef.current.getLayer('bus-labels')) {
-        mapRef.current.setPaintProperty('bus-labels', 'text-opacity', opacityExpression);
-      }
-      if (mapRef.current.getLayer('bus-arrows')) {
-        const arrowOpacityExpression = [
-          'case',
-          ['get', 'isSelected'], 0.8,
-          ['get', 'hasSelectedBus'], 0.3,
-          0.8
-        ] as any;
-        mapRef.current.setPaintProperty('bus-arrows', 'icon-opacity', arrowOpacityExpression);
-      }
-
-      mapRef.current.triggerRepaint();
-    });
+      mapRef.current.setPaintProperty('bus-arrows', 'icon-opacity', arrowOpacityExpression);
+    }
   }, [positions, isLoaded, selectedLines, selectedBus, mapRef, routesRef, tripsRef]);
 
   useEffect(() => {
@@ -120,12 +114,25 @@ export const useBusLayer = (
 
     const bus = positionsRef.current.find(p => p.id === selectedBus.id);
     if (bus) {
-      mapRef.current.easeTo({
-        center: [bus.longitude, bus.latitude],
-        zoom: Math.max(mapRef.current.getZoom(), 15),
-        duration: 1000,
-        padding: { top: 0, bottom: 0, left: isDashboardExpanded ? 400 : 0, right: 0 }
-      });
+      mapRef.current.stop();
+      
+      const currentZoom = mapRef.current.getZoom();
+      const targetZoom = Math.max(currentZoom, 15);
+      
+      if (Math.abs(currentZoom - targetZoom) < 0.5) {
+        mapRef.current.jumpTo({
+          center: [bus.longitude, bus.latitude],
+          padding: { top: 0, bottom: 0, left: isDashboardExpanded ? 400 : 0, right: 0 }
+        });
+      } else {
+        mapRef.current.flyTo({
+          center: [bus.longitude, bus.latitude],
+          zoom: targetZoom,
+          duration: 400,
+          padding: { top: 0, bottom: 0, left: isDashboardExpanded ? 400 : 0, right: 0 },
+          essential: true
+        });
+      }
 
       mapRef.current.setFeatureState(
         { source: 'buses', id: bus.id },
@@ -135,6 +142,7 @@ export const useBusLayer = (
 
     return () => {
       if (mapRef.current && selectedBus) {
+        mapRef.current.stop();
         mapRef.current.setFeatureState(
           { source: 'buses', id: selectedBus.id },
           { selected: false }
