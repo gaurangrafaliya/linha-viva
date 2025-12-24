@@ -14,7 +14,7 @@ const INITIAL_ZOOM = 13;
 const MIN_ZOOM = 11.5;
 const PORTO_BOUNDS: [[number, number], [number, number]] = [
   [-8.78, 41.05], // Southwest coordinates
-  [-8.45, 41.25]  // Northeast coordinates
+  [-8.4, 41.25]  // Northeast coordinates
 ];
 
 interface SelectedBus {
@@ -30,6 +30,7 @@ interface MapContainerProps {
   onSelectRoute: (routeId: string | null) => void;
   theme: Theme;
   isDashboardExpanded: boolean;
+  activeDirection?: 0 | 1;
 }
 
 const luminanceCache = new Map<string, number>();
@@ -58,7 +59,7 @@ const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: numbe
   return R * c;
 };
 
-export const MapContainer = ({ styleUrl, onSelectBus, selectedBus, onSelectRoute, theme, isDashboardExpanded }: MapContainerProps) => {
+export const MapContainer = ({ styleUrl, onSelectBus, selectedBus, onSelectRoute, theme, isDashboardExpanded, activeDirection = 0 }: MapContainerProps) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -258,7 +259,8 @@ export const MapContainer = ({ styleUrl, onSelectBus, selectedBus, onSelectRoute
         gtfsService.fetchRoutes().then(routes => routes.find(r => r.id === routeId))
       ]);
       
-      const trip = trips[0]; // Take the first trip as representative for the shape
+      // Use the trip for the active direction instead of just the first one
+      const trip = trips.find(t => t.directionId === activeDirection) || trips[0];
       if (!trip?.shapeId) return;
 
       const shapes = await gtfsService.fetchShape(trip.shapeId);
@@ -271,7 +273,7 @@ export const MapContainer = ({ styleUrl, onSelectBus, selectedBus, onSelectRoute
     };
 
     loadRouteData();
-  }, [selectedBus?.routeId]);
+  }, [selectedBus?.routeId, activeDirection]);
 
   useEffect(() => {
     const loadRoutes = async () => {

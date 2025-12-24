@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { motion } from "framer-motion";
 import { ChevronLeft, MapPin, Loader2, Info, ExternalLink } from "lucide-react";
-import { GTFSRoute, GTFSStop } from "@/types/gtfs";
+import { GTFSRoute, GTFSStop, GTFSStopTime, GTFSTrip } from "@/types/gtfs";
 import { gtfsService } from "@/services/gtfsService";
 import { cn } from "@/lib/utils";
 
@@ -11,6 +11,8 @@ interface RouteDetailProps {
   isDark?: boolean;
   selectedBusId?: string | null;
   busPosition?: { latitude: number; longitude: number; bearing?: number } | null;
+  onDirectionChange?: (direction: 0 | 1) => void;
+  onSwitchBusForDirection?: (direction: 0 | 1) => void;
 }
 
 // Extract distance calculation outside component to avoid recreating on every render
@@ -27,26 +29,143 @@ const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: numbe
   return R * c;
 };
 
-export const RouteDetail = ({ route, onBack, isDark = false, selectedBusId, busPosition }: RouteDetailProps) => {
+// Parse GTFS time format (HH:MM:SS) to minutes since midnight
+const parseGTFSTime = (timeStr: string): number => {
+  const [hours, minutes, seconds] = timeStr.split(':').map(Number);
+  return hours * 60 + minutes + seconds / 60;
+};
+
+// Get current time in minutes since midnight
+const getCurrentTimeMinutes = (): number => {
+  const now = new Date();
+  return now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+};
+
+// Find active trip based on current time (optimized with pre-filtered stopTimesMap)
+const findActiveTrip = (
+  trips: GTFSTrip[],
+  stopTimesMap: Map<string, GTFSStopTime[]>,
+  directionId: number,
+  currentTimeMinutes: number
+): GTFSTrip | null => {
+  const directionTrips = trips.filter(trip => trip.directionId === directionId);
+  
+  let bestTrip: GTFSTrip | null = null;
+  let minTimeDiff = Infinity;
+
+  for (const trip of directionTrips) {
+    const tripStopTimes = stopTimesMap.get(trip.tripId);
+    if (!tripStopTimes || tripStopTimes.length === 0) continue;
+
+    const firstStopTime = parseGTFSTime(tripStopTimes[0].arrivalTime);
+    const lastStopTime = parseGTFSTime(tripStopTimes[tripStopTimes.length - 1].arrivalTime);
+
+    // Check if current time falls within this trip's time range
+    // Handle day rollover (times after midnight)
+    let timeDiff: number;
+    if (firstStopTime <= lastStopTime) {
+      // Normal case: trip doesn't cross midnight
+      if (currentTimeMinutes >= firstStopTime && currentTimeMinutes <= lastStopTime) {
+        timeDiff = 0; // Current time is within trip range
+      } else if (currentTimeMinutes < firstStopTime) {
+        timeDiff = firstStopTime - currentTimeMinutes;
+      } else {
+        timeDiff = currentTimeMinutes - lastStopTime;
+      }
+    } else {
+      // Trip crosses midnight
+      if (currentTimeMinutes >= firstStopTime || currentTimeMinutes <= lastStopTime) {
+        timeDiff = 0; // Current time is within trip range
+      } else {
+        // Find minimum time difference
+        const diff1 = firstStopTime - currentTimeMinutes;
+        const diff2 = currentTimeMinutes - lastStopTime;
+        timeDiff = Math.min(diff1, diff2);
+      }
+    }
+
+    if (timeDiff < minTimeDiff) {
+      minTimeDiff = timeDiff;
+      bestTrip = trip;
+    }
+  }
+
+  return bestTrip;
+};
+
+// Format minutes since midnight to HH:MM
+const formatTime = (minutes: number): string => {
+  const h = Math.floor(minutes / 60) % 24;
+  const m = Math.floor(minutes % 60);
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+};
+
+// Calculate delay status for next stop (optimized with pre-built stopTimesMap)
+const calculateDelayStatus = (
+  nextStopId: string,
+  activeTrip: GTFSTrip | null,
+  stopTimesMap: Map<string, GTFSStopTime[]>,
+  currentTimeMinutes: number
+): { status: 'on-time' | 'late'; delayMinutes: number; scheduledTime: string; estimatedTime: string } | null => {
+  if (!activeTrip) return null;
+
+  const tripStopTimes = stopTimesMap.get(activeTrip.tripId);
+  if (!tripStopTimes) return null;
+
+  const nextStopTime = tripStopTimes.find(st => st.stopId === nextStopId);
+  if (!nextStopTime) return null;
+
+  const scheduledTimeMinutes = parseGTFSTime(nextStopTime.arrivalTime);
+  const delayMinutes = currentTimeMinutes - scheduledTimeMinutes;
+
+  // Handle day rollover
+  let adjustedDelay = delayMinutes;
+  if (adjustedDelay > 720) { // More than 12 hours, likely wrapped around
+    adjustedDelay = adjustedDelay - 1440; // Subtract 24 hours
+  } else if (adjustedDelay < -720) {
+    adjustedDelay = adjustedDelay + 1440; // Add 24 hours
+  }
+
+  const status = adjustedDelay <= 0 ? 'on-time' : 'late';
+  const delayVal = status === 'on-time' ? 0 : Math.round(adjustedDelay);
+  const estimatedTimeMinutes = scheduledTimeMinutes + Math.max(0, adjustedDelay);
+
+  return { 
+    status, 
+    delayMinutes: delayVal,
+    scheduledTime: formatTime(scheduledTimeMinutes),
+    estimatedTime: formatTime(estimatedTimeMinutes)
+  };
+};
+
+export const RouteDetail = ({ route, onBack, isDark = false, selectedBusId, busPosition, onDirectionChange, onSwitchBusForDirection }: RouteDetailProps) => {
   const [stops, setStops] = useState<{ direction0: GTFSStop[], direction1: GTFSStop[] }>({ direction0: [], direction1: [] });
   const [routeShapes, setRouteShapes] = useState<{ direction0: { lat: number; lng: number }[], direction1: { lat: number; lng: number }[] }>({ direction0: [], direction1: [] });
   const [loading, setLoading] = useState(true);
   const [activeDirection, setActiveDirection] = useState<0 | 1>(0);
+  const [isManualDirection, setIsManualDirection] = useState(false);
+  const [stopTimes, setStopTimes] = useState<GTFSStopTime[]>([]);
+  const [trips, setTrips] = useState<GTFSTrip[]>([]);
+  const [activeTrip, setActiveTrip] = useState<GTFSTrip | null>(null);
+  const [currentTime, setCurrentTime] = useState<number>(getCurrentTimeMinutes());
 
   useEffect(() => {
     const loadStops = async () => {
       setLoading(true);
-      const [stopsData, trips] = await Promise.all([
+      const [stopsData, tripsData, stopTimesData] = await Promise.all([
         gtfsService.fetchStopsForRoute(route.id),
-        gtfsService.fetchTrips(route.id)
+        gtfsService.fetchTrips(route.id),
+        gtfsService.fetchStopTimes()
       ]);
       setStops(stopsData);
+      setTrips(tripsData);
+      setStopTimes(stopTimesData);
 
       // Load shapes for both directions
       const shapes0: { lat: number; lng: number }[] = [];
       const shapes1: { lat: number; lng: number }[] = [];
       
-      for (const trip of trips) {
+      for (const trip of tripsData) {
         if (trip.shapeId) {
           const shape = await gtfsService.fetchShape(trip.shapeId);
           const coords = shape.map(s => ({ lat: s.lat, lng: s.lng }));
@@ -124,15 +243,106 @@ export const RouteDetail = ({ route, onBack, isDark = false, selectedBusId, busP
     return direction;
   }, [selectedBusId, busPosition, stops.direction0, stops.direction1]);
 
-  // Update active direction when detected direction changes
+  // Update active direction when detected direction changes (only if not manually set)
   useEffect(() => {
-    setActiveDirection(detectedDirection);
-  }, [detectedDirection]);
+    if (!isManualDirection) {
+      setActiveDirection(detectedDirection);
+    }
+  }, [detectedDirection, isManualDirection]);
+
+  // Notify parent when direction changes
+  useEffect(() => {
+    if (onDirectionChange) {
+      onDirectionChange(activeDirection);
+    }
+  }, [activeDirection, onDirectionChange]);
+
+  // Reset manual direction flag when bus selection changes
+  useEffect(() => {
+    if (selectedBusId) {
+      setIsManualDirection(false);
+    }
+  }, [selectedBusId]);
 
   const currentStops = useMemo(() => 
     activeDirection === 0 ? stops.direction0 : stops.direction1,
     [activeDirection, stops.direction0, stops.direction1]
   );
+
+  // Get destination names (headsigns) for each direction
+  const directionLabels = useMemo(() => {
+    const direction0Trip = trips.find(t => t.directionId === 0);
+    const direction1Trip = trips.find(t => t.directionId === 1);
+    
+    const label0 = direction0Trip?.headsign || 'Outbound';
+    const label1 = direction1Trip?.headsign || 'Inbound';
+    
+    // If we have stops, we can also show origin → destination format
+    const getOriginDestination = (directionStops: GTFSStop[]) => {
+      if (directionStops.length === 0) return null;
+      const origin = directionStops[0]?.name;
+      const destination = directionStops[directionStops.length - 1]?.name;
+      if (origin && destination && origin !== destination) {
+        return `${origin} → ${destination}`;
+      }
+      return null;
+    };
+
+    const dir0Label = getOriginDestination(stops.direction0) || label0;
+    const dir1Label = getOriginDestination(stops.direction1) || label1;
+
+    return { direction0: dir0Label, direction1: dir1Label };
+  }, [trips, stops.direction0, stops.direction1]);
+
+  // Create memoized map of stopTimes by tripId for current route only (performance optimization)
+  const routeStopTimesMap = useMemo(() => {
+    if (trips.length === 0 || stopTimes.length === 0) {
+      return new Map<string, GTFSStopTime[]>();
+    }
+
+    const tripIds = new Set(trips.map(t => t.tripId));
+    const map = new Map<string, GTFSStopTime[]>();
+
+    // Only process stopTimes for trips in this route
+    for (const stopTime of stopTimes) {
+      if (tripIds.has(stopTime.tripId)) {
+        const existing = map.get(stopTime.tripId) || [];
+        existing.push(stopTime);
+        map.set(stopTime.tripId, existing);
+      }
+    }
+
+    // Sort stopTimes by sequence for each trip
+    map.forEach((times, tripId) => {
+      times.sort((a, b) => a.stopSequence - b.stopSequence);
+    });
+
+    return map;
+  }, [trips, stopTimes]);
+
+  // Determine active trip based on current time and update time periodically
+  useEffect(() => {
+    if (trips.length === 0 || routeStopTimesMap.size === 0) {
+      setActiveTrip(null);
+      return;
+    }
+
+    const updateTripAndTime = () => {
+      const newTimeMinutes = getCurrentTimeMinutes();
+      setCurrentTime(newTimeMinutes);
+      const trip = findActiveTrip(trips, routeStopTimesMap, activeDirection, newTimeMinutes);
+      setActiveTrip(trip);
+    };
+
+    // Initial update
+    updateTripAndTime();
+
+    // Update every minute to keep trip selection and delay status current
+    const interval = setInterval(updateTripAndTime, 60000); // Update every minute
+
+    return () => clearInterval(interval);
+  }, [trips, routeStopTimesMap, activeDirection]);
+
   const routeColor = route.color ? `#${route.color}` : 'var(--color-brand-primary)';
   const routeTextColor = route.textColor ? `#${route.textColor}` : '#ffffff';
 
@@ -224,6 +434,16 @@ export const RouteDetail = ({ route, onBack, isDark = false, selectedBusId, busP
       return { passedStops, nextStopIndex };
     })();
   }, [selectedBusId, busPosition, currentStops, stopPositionsOnRoute, activeDirection, routeShapes]);
+
+  // Calculate delay status for next stop
+  const delayStatus = useMemo(() => {
+    if (nextStopIndex === null || currentStops.length === 0 || !activeTrip || nextStopIndex >= currentStops.length) {
+      return null;
+    }
+    const nextStop = currentStops[nextStopIndex];
+    return calculateDelayStatus(nextStop.id, activeTrip, routeStopTimesMap, currentTime);
+  }, [nextStopIndex, currentStops, activeTrip, routeStopTimesMap, currentTime]);
+
   const nextStopRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastScrollIndexRef = useRef<number | null>(null);
@@ -311,26 +531,42 @@ export const RouteDetail = ({ route, onBack, isDark = false, selectedBusId, busP
           isDark ? "bg-neutral-800/50" : "bg-neutral-100"
         )}>
           <button
-            onClick={() => setActiveDirection(0)}
+            onClick={() => {
+              const directionChanged = activeDirection !== 0;
+              setActiveDirection(0);
+              setIsManualDirection(true);
+              if (directionChanged && onSwitchBusForDirection) {
+                onSwitchBusForDirection(0);
+              }
+            }}
             className={cn(
-              "flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all cursor-pointer",
+              "flex-1 py-2 px-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all cursor-pointer truncate",
               activeDirection === 0 
                 ? (isDark ? "bg-neutral-700 text-white shadow-sm" : "bg-white text-neutral-900 shadow-sm")
                 : "text-neutral-400 hover:text-neutral-600"
             )}
+            title={directionLabels.direction0}
           >
-            Outbound
+            {directionLabels.direction0}
           </button>
           <button
-            onClick={() => setActiveDirection(1)}
+            onClick={() => {
+              const directionChanged = activeDirection !== 1;
+              setActiveDirection(1);
+              setIsManualDirection(true);
+              if (directionChanged && onSwitchBusForDirection) {
+                onSwitchBusForDirection(1);
+              }
+            }}
             className={cn(
-              "flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all cursor-pointer",
+              "flex-1 py-2 px-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all cursor-pointer truncate",
               activeDirection === 1 
                 ? (isDark ? "bg-neutral-700 text-white shadow-sm" : "bg-white text-neutral-900 shadow-sm")
                 : "text-neutral-400 hover:text-neutral-600"
             )}
+            title={directionLabels.direction1}
           >
-            Inbound
+            {directionLabels.direction1}
           </button>
         </div>
       </div>
@@ -389,18 +625,48 @@ export const RouteDetail = ({ route, onBack, isDark = false, selectedBusId, busP
                     </div>
                     
                     <div className="flex-1 min-w-0">
-                      <p className={cn(
-                        "text-[12px] font-bold leading-tight transition-colors",
-                        isDark ? "text-neutral-200 group-hover:text-white" : "text-neutral-700 group-hover:text-neutral-900",
-                        isNext && "text-brand-primary",
-                        isPassed && !isNext && "opacity-60"
-                      )}>
-                        {stop.name}
-                        {isNext && <span className="ml-2 text-[10px] text-brand-primary/70">● Next</span>}
-                        {isPassed && !isNext && <span className="ml-2 text-[10px] text-neutral-400">✓ Passed</span>}
-                      </p>
-                      <div className="flex items-center gap-2 mt-0.5">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <p className={cn(
+                          "text-[12px] font-bold leading-tight transition-colors",
+                          isDark ? "text-neutral-200 group-hover:text-white" : "text-neutral-700 group-hover:text-neutral-900",
+                          isNext && "text-brand-primary",
+                          isPassed && !isNext && "opacity-60"
+                        )}>
+                          {stop.name}
+                          {isNext && <span className="ml-2 text-[10px] text-brand-primary/70">● Next</span>}
+                          {isPassed && !isNext && <span className="ml-2 text-[10px] text-neutral-400">✓ Passed</span>}
+                        </p>
+                        {isNext && delayStatus && (
+                          <div className="flex items-center gap-1.5 leading-none">
+                            {delayStatus.status === 'late' && (
+                              <span className={cn(
+                                "text-[11px] font-medium line-through opacity-40",
+                                isDark ? "text-neutral-400" : "text-neutral-500"
+                              )}>
+                                {delayStatus.scheduledTime}
+                              </span>
+                            )}
+                            <span className={cn(
+                              "text-[12px] font-bold",
+                              isDark ? "text-neutral-200" : "text-neutral-900"
+                            )}>
+                              {delayStatus.status === 'on-time' ? delayStatus.scheduledTime : delayStatus.estimatedTime}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between gap-2 mt-0.5">
                         <span className="text-[9px] font-medium text-neutral-400 opacity-60">Stop ID: {stop.id}</span>
+                        {isNext && delayStatus && (
+                          <span className={cn(
+                            "text-[10px] font-black uppercase tracking-wider whitespace-nowrap",
+                            delayStatus.status === 'on-time' 
+                              ? (isDark ? "text-green-400" : "text-green-600")
+                              : (isDark ? "text-orange-400" : "text-orange-600")
+                          )}>
+                            {delayStatus.status === 'on-time' ? 'On Time' : `Late ${delayStatus.delayMinutes} mins`}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>

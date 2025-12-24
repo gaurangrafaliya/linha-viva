@@ -23,6 +23,8 @@ interface RouteDashboardProps {
   theme: Theme;
   isExpanded: boolean;
   onToggleExpand: () => void;
+  onDirectionChange?: (direction: 0 | 1) => void;
+  onSwitchBusForDirection?: (direction: 0 | 1) => void;
 }
 
 export const RouteDashboard = ({ 
@@ -32,7 +34,9 @@ export const RouteDashboard = ({
   searchTerm, 
   theme,
   isExpanded,
-  onToggleExpand
+  onToggleExpand,
+  onDirectionChange,
+  onSwitchBusForDirection
 }: RouteDashboardProps) => {
   const isDark = theme === 'dark';
   const [routes, setRoutes] = useState<GTFSRoute[]>([]);
@@ -289,7 +293,7 @@ export const RouteDashboard = ({
                     "p-6 border-t flex justify-between items-center px-8 transition-colors duration-300",
                     isDark ? "border-neutral-800/50 bg-neutral-800/10" : "border-neutral-100/50 bg-neutral-50/30"
                   )}>
-                    <span className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.1em]">
+                    <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">
                       {filteredRoutes.length} <span className="font-medium opacity-60 ml-1">Lines</span>
                     </span>
                     <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/10 rounded-full">
@@ -319,6 +323,8 @@ export const RouteDashboard = ({
                       isDark={isDark}
                       selectedBusId={selectedBus?.id}
                       busPosition={selectedBus ? positions.find(p => p.id === selectedBus.id) || null : null}
+                      onDirectionChange={onDirectionChange}
+                      onSwitchBusForDirection={onSwitchBusForDirection}
                     />
                   )}
                 </motion.div>
