@@ -29,9 +29,36 @@ interface MapContainerProps {
   selectedBus: SelectedBus | null;
   onSelectRoute: (routeId: string | null) => void;
   theme: Theme;
+  isDashboardExpanded: boolean;
 }
 
-export const MapContainer = ({ styleUrl, onSelectBus, selectedBus, onSelectRoute, theme }: MapContainerProps) => {
+const luminanceCache = new Map<string, number>();
+const getLuminance = (hex: string) => {
+  if (!hex || hex.length < 7) return 0;
+  if (luminanceCache.has(hex)) return luminanceCache.get(hex)!;
+  
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  
+  luminanceCache.set(hex, lum);
+  return lum;
+};
+
+// Distance calculation helper
+const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number) => {
+  const R = 6371e3;
+  const φ1 = lat1 * Math.PI / 180;
+  const φ2 = lat2 * Math.PI / 180;
+  const Δφ = (lat2 - lat1) * Math.PI / 180;
+  const Δλ = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+};
+
+export const MapContainer = ({ styleUrl, onSelectBus, selectedBus, onSelectRoute, theme, isDashboardExpanded }: MapContainerProps) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -40,7 +67,11 @@ export const MapContainer = ({ styleUrl, onSelectBus, selectedBus, onSelectRoute
   const routesRef = useRef<Map<string, GTFSRoute>>(new Map());
   const tripsRef = useRef<Map<string, string>>(new Map()); // line -> routeId
   const selectedBusRef = useRef<SelectedBus | null>(null);
-  
+  const [currentRouteData, setCurrentRouteData] = useState<{
+    coordinates: [number, number][];
+    routeColor: string;
+  } | null>(null);
+
   useEffect(() => {
     positionsRef.current = positions;
   }, [positions]);
@@ -48,31 +79,6 @@ export const MapContainer = ({ styleUrl, onSelectBus, selectedBus, onSelectRoute
   useEffect(() => {
     selectedBusRef.current = selectedBus;
   }, [selectedBus]);
-
-  useEffect(() => {
-    const loadRoutes = async () => {
-      const [routes, trips] = await Promise.all([
-        gtfsService.fetchRoutes(),
-        gtfsService.fetchAllTrips()
-      ]);
-      
-      const routeMap = new Map<string, GTFSRoute>();
-      routes.forEach(route => {
-        routeMap.set(route.shortName, route);
-      });
-      routesRef.current = routeMap;
-
-      const lineToRouteMap = new Map<string, string>();
-      trips.forEach(trip => {
-        const route = routes.find(r => r.id === trip.routeId);
-        if (route) {
-          lineToRouteMap.set(route.shortName, trip.routeId);
-        }
-      });
-      tripsRef.current = lineToRouteMap;
-    };
-    loadRoutes();
-  }, []);
 
   const addBusesLayer = useCallback((map: maplibregl.Map) => {
     if (!map.getSource('buses')) {
@@ -195,6 +201,103 @@ export const MapContainer = ({ styleUrl, onSelectBus, selectedBus, onSelectRoute
     }
   }, []);
 
+  const updateSource = useCallback(() => {
+    if (!mapRef.current || !isLoaded) return;
+    const map = mapRef.current;
+    
+    let source = map.getSource('buses') as maplibregl.GeoJSONSource;
+    if (!source) {
+      addBusesLayer(map);
+      source = map.getSource('buses') as maplibregl.GeoJSONSource;
+      if (!source) return;
+    }
+
+    const geoJsonData: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: positions.map(bus => {
+        const route = routesRef.current.get(bus.line);
+        const routeColor = route?.color ? `#${route.color}` : BRAND_COLORS.primary;
+        const isLight = getLuminance(routeColor) > 0.7;
+        const routeTextColor = isLight ? '#000000' : '#ffffff';
+        const isSelected = bus.id === selectedBusRef.current?.id;
+        
+        return {
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: [bus.longitude, bus.latitude],
+          },
+          properties: {
+            id: bus.id,
+            line: bus.line,
+            operator: bus.operator,
+            bearing: bus.bearing,
+            speed: bus.speed,
+            routeColor,
+            routeTextColor,
+            sortKey: isSelected ? 2 : 1
+          },
+        };
+      }),
+    };
+
+    source.setData(geoJsonData);
+  }, [positions, isLoaded, addBusesLayer]);
+
+  // Load route data only when selected bus changes its route
+  useEffect(() => {
+    if (!selectedBus?.routeId) {
+      setCurrentRouteData(null);
+      return;
+    }
+
+    const loadRouteData = async () => {
+      const routeId = selectedBus.routeId!;
+      const [trips, route] = await Promise.all([
+        gtfsService.fetchTrips(routeId),
+        gtfsService.fetchRoutes().then(routes => routes.find(r => r.id === routeId))
+      ]);
+      
+      const trip = trips[0]; // Take the first trip as representative for the shape
+      if (!trip?.shapeId) return;
+
+      const shapes = await gtfsService.fetchShape(trip.shapeId);
+      if (shapes.length === 0) return;
+
+      const coordinates = shapes.map(s => [s.lng, s.lat] as [number, number]);
+      const routeColor = route?.color ? `#${route.color}` : BRAND_COLORS.primary;
+
+      setCurrentRouteData({ coordinates, routeColor });
+    };
+
+    loadRouteData();
+  }, [selectedBus?.routeId]);
+
+  useEffect(() => {
+    const loadRoutes = async () => {
+      const [routes, trips] = await Promise.all([
+        gtfsService.fetchRoutes(),
+        gtfsService.fetchAllTrips()
+      ]);
+      
+      const routeMap = new Map<string, GTFSRoute>();
+      routes.forEach(route => {
+        routeMap.set(route.shortName, route);
+      });
+      routesRef.current = routeMap;
+
+      const lineToRouteMap = new Map<string, string>();
+      trips.forEach(trip => {
+        const route = routes.find(r => r.id === trip.routeId);
+        if (route) {
+          lineToRouteMap.set(route.shortName, trip.routeId);
+        }
+      });
+      tripsRef.current = lineToRouteMap;
+    };
+    loadRoutes();
+  }, []);
+
   useEffect(() => {
     if (mapRef.current || !mapContainer.current) return;
 
@@ -256,49 +359,7 @@ export const MapContainer = ({ styleUrl, onSelectBus, selectedBus, onSelectRoute
 
     map.on('style.load', () => {
       addBusesLayer(map);
-      const currentPositions = positionsRef.current;
-      if (currentPositions.length > 0) {
-        const source = map.getSource('buses') as maplibregl.GeoJSONSource;
-        if (source) {
-          const geoJsonData: GeoJSON.FeatureCollection = {
-            type: 'FeatureCollection',
-            features: currentPositions.map(bus => {
-              const route = routesRef.current.get(bus.line);
-              const routeColor = route?.color ? `#${route.color}` : BRAND_COLORS.primary;
-              
-              const getLuminance = (hex: string) => {
-                const r = parseInt(hex.slice(1, 3), 16);
-                const g = parseInt(hex.slice(3, 5), 16);
-                const b = parseInt(hex.slice(5, 7), 16);
-                return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-              };
-
-              const isLight = getLuminance(routeColor) > 0.7;
-              const routeTextColor = isLight ? '#000000' : '#ffffff';
-              const isSelected = bus.id === selectedBusRef.current?.id;
-              
-              return {
-                type: 'Feature',
-                geometry: {
-                  type: 'Point',
-                  coordinates: [bus.longitude, bus.latitude],
-                },
-                properties: {
-                  id: bus.id,
-                  line: bus.line,
-                  operator: bus.operator,
-                  bearing: bus.bearing,
-                  speed: bus.speed,
-                  routeColor,
-                  routeTextColor,
-                  sortKey: isSelected ? 2 : 1
-                },
-              };
-            }),
-          };
-          source.setData(geoJsonData);
-        }
-      }
+      updateSource();
     });
 
     return () => {
@@ -307,7 +368,10 @@ export const MapContainer = ({ styleUrl, onSelectBus, selectedBus, onSelectRoute
     };
   }, [styleUrl]);
 
-  // Update bus styling and center map when selection changes
+  const lastCenteredBusIdRef = useRef<string | null>(null);
+  const lastCenteredPosRef = useRef<[number, number] | null>(null);
+
+  // Update bus styling and center map when selection or positions change
   useEffect(() => {
     if (mapRef.current && isLoaded) {
       const selectedId = selectedBus?.id || '';
@@ -347,164 +411,109 @@ export const MapContainer = ({ styleUrl, onSelectBus, selectedBus, onSelectRoute
         ]);
       }
 
-      // Center map on selected bus
+      // Center map on selected bus with offset for dashboard
       if (selectedBus) {
-        const busPos = positionsRef.current.find(p => p.id === selectedBus.id);
+        const busPos = positions.find(p => p.id === selectedBus.id);
         if (busPos) {
-          mapRef.current.easeTo({
-            center: [busPos.longitude, busPos.latitude],
-            zoom: Math.max(mapRef.current.getZoom(), 15),
-            duration: 1000,
-            essential: true
-          });
+          const newPos: [number, number] = [busPos.longitude, busPos.latitude];
+          const isNewBus = lastCenteredBusIdRef.current !== selectedBus.id;
+          
+          // Only center if it's a new bus selection or the bus has moved significantly (> 10 meters)
+          let shouldCenter = isNewBus;
+          if (!isNewBus && lastCenteredPosRef.current) {
+            const dist = calculateDistance(lastCenteredPosRef.current[1], lastCenteredPosRef.current[0], newPos[1], newPos[0]);
+            if (dist > 10) shouldCenter = true;
+          }
+
+          if (shouldCenter) {
+            mapRef.current.easeTo({
+              center: newPos,
+              zoom: Math.max(mapRef.current.getZoom(), 15),
+              duration: 1000,
+              padding: {
+                left: isDashboardExpanded ? 400 : 0,
+                right: 0,
+                top: 0,
+                bottom: 0
+              },
+              essential: true
+            });
+            lastCenteredBusIdRef.current = selectedBus.id;
+            lastCenteredPosRef.current = newPos;
+          }
         }
+      } else {
+        lastCenteredBusIdRef.current = null;
+        lastCenteredPosRef.current = null;
       }
     }
-  }, [selectedBus, isLoaded]);
+  }, [selectedBus?.id, positions, isLoaded, isDashboardExpanded]);
 
-  // Load and draw route line for selected bus
+  // Update route line for selected bus
   useEffect(() => {
-    if (!mapRef.current || !isLoaded || !selectedBus) {
+    if (!mapRef.current || !isLoaded || !selectedBus || !currentRouteData) {
       const traveledSource = mapRef.current?.getSource('route-line-traveled') as maplibregl.GeoJSONSource;
       const remainingSource = mapRef.current?.getSource('route-line-remaining') as maplibregl.GeoJSONSource;
-      if (traveledSource) {
-        traveledSource.setData({
-          type: 'FeatureCollection',
-          features: []
-        });
-      }
-      if (remainingSource) {
-        remainingSource.setData({
-          type: 'FeatureCollection',
-          features: []
-        });
-      }
+      if (traveledSource) traveledSource.setData({ type: 'FeatureCollection', features: [] });
+      if (remainingSource) remainingSource.setData({ type: 'FeatureCollection', features: [] });
       return;
     }
 
-    const loadRouteLine = async () => {
-      const routeId = selectedBus.routeId;
-      if (!routeId) return;
+    const { coordinates, routeColor } = currentRouteData;
+    const busPosition = positions.find(b => b.id === selectedBus.id);
+    if (!busPosition) return;
 
-      const trips = await gtfsService.fetchTrips(routeId);
-      const trip = trips.find(t => t.routeId === routeId);
-      if (!trip?.shapeId) return;
+    // Find the closest point on the route to the bus
+    let closestIndex = 0;
+    let minDistance = Infinity;
+    
+    coordinates.forEach((coord, index) => {
+      const distance = calculateDistance(busPosition.latitude, busPosition.longitude, coord[1], coord[0]);
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestIndex = index;
+      }
+    });
 
-      const shapes = await gtfsService.fetchShape(trip.shapeId);
-      if (shapes.length === 0) return;
+    // Find which segment the bus is on
+    let segmentIndex = closestIndex;
+    if (closestIndex > 0 && closestIndex < coordinates.length - 1) {
+      const distPrevToBus = calculateDistance(coordinates[closestIndex - 1][1], coordinates[closestIndex - 1][0], busPosition.latitude, busPosition.longitude);
+      const distPrevToClosest = calculateDistance(coordinates[closestIndex - 1][1], coordinates[closestIndex - 1][0], coordinates[closestIndex][1], coordinates[closestIndex][0]);
+      if (distPrevToBus < distPrevToClosest) segmentIndex = closestIndex - 1;
+    } else if (closestIndex === coordinates.length - 1 && coordinates.length > 1) {
+      segmentIndex = closestIndex - 1;
+    }
 
-      const coordinates = shapes.map(s => [s.lng, s.lat] as [number, number]);
-      const route = routesRef.current.get(selectedBus.line);
-      const routeColor = route?.color ? `#${route.color}` : BRAND_COLORS.primary;
+    const traveledCoordinates = [...coordinates.slice(0, segmentIndex + 1), [busPosition.longitude, busPosition.latitude] as [number, number]];
+    const remainingCoordinates = [[busPosition.longitude, busPosition.latitude] as [number, number], ...coordinates.slice(segmentIndex + 1)];
 
-      // Find bus current position
-      const busPosition = positionsRef.current.find(b => b.id === selectedBus.id);
-      
-      if (!busPosition || !mapRef.current) return;
+    const traveledSource = mapRef.current.getSource('route-line-traveled') as maplibregl.GeoJSONSource;
+    const remainingSource = mapRef.current.getSource('route-line-remaining') as maplibregl.GeoJSONSource;
 
-      // Calculate distance between two points in meters
-      const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number) => {
-        const R = 6371e3;
-        const φ1 = lat1 * Math.PI / 180;
-        const φ2 = lat2 * Math.PI / 180;
-        const Δφ = (lat2 - lat1) * Math.PI / 180;
-        const Δλ = (lng2 - lng1) * Math.PI / 180;
-        const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-                  Math.cos(φ1) * Math.cos(φ2) *
-                  Math.sin(Δλ/2) * Math.sin(Δλ/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        return R * c;
-      };
-
-      // Find the closest point on the route to the bus
-      let closestIndex = 0;
-      let minDistance = Infinity;
-      
-      coordinates.forEach((coord, index) => {
-        const distance = calculateDistance(
-          busPosition.latitude,
-          busPosition.longitude,
-          coord[1],
-          coord[0]
-        );
-        if (distance < minDistance) {
-          minDistance = distance;
-          closestIndex = index;
-        }
+    if (traveledSource && remainingSource) {
+      traveledSource.setData({
+        type: 'FeatureCollection',
+        features: traveledCoordinates.length > 1 ? [{
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: traveledCoordinates },
+          properties: {}
+        }] : []
       });
 
-      // Find which segment the bus is on to avoid zig-zags
-      let segmentIndex = closestIndex;
-      if (closestIndex > 0 && closestIndex < coordinates.length - 1) {
-        const distPrevToBus = calculateDistance(
-          coordinates[closestIndex - 1][1],
-          coordinates[closestIndex - 1][0],
-          busPosition.latitude,
-          busPosition.longitude
-        );
-        const distPrevToClosest = calculateDistance(
-          coordinates[closestIndex - 1][1],
-          coordinates[closestIndex - 1][0],
-          coordinates[closestIndex][1],
-          coordinates[closestIndex][0]
-        );
-        
-        if (distPrevToBus < distPrevToClosest) {
-          // Bus is between closestIndex-1 and closestIndex
-          segmentIndex = closestIndex - 1;
-        } else {
-          // Bus is between closestIndex and closestIndex+1
-          segmentIndex = closestIndex;
-        }
-      } else if (closestIndex === coordinates.length - 1 && coordinates.length > 1) {
-        segmentIndex = closestIndex - 1;
-      }
+      remainingSource.setData({
+        type: 'FeatureCollection',
+        features: remainingCoordinates.length > 1 ? [{
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: remainingCoordinates },
+          properties: {}
+        }] : []
+      });
 
-      // Create a clean split at the bus position
-      const traveledCoordinates = [
-        ...coordinates.slice(0, segmentIndex + 1),
-        [busPosition.longitude, busPosition.latitude] as [number, number]
-      ];
-      const remainingCoordinates = [
-        [busPosition.longitude, busPosition.latitude] as [number, number],
-        ...coordinates.slice(segmentIndex + 1)
-      ];
-
-      const traveledSource = mapRef.current.getSource('route-line-traveled') as maplibregl.GeoJSONSource;
-      const remainingSource = mapRef.current.getSource('route-line-remaining') as maplibregl.GeoJSONSource;
-
-      if (traveledSource && remainingSource) {
-        traveledSource.setData({
-          type: 'FeatureCollection',
-          features: traveledCoordinates.length > 1 ? [{
-            type: 'Feature',
-            geometry: {
-              type: 'LineString',
-              coordinates: traveledCoordinates
-            },
-            properties: {}
-          }] : []
-        });
-
-        remainingSource.setData({
-          type: 'FeatureCollection',
-          features: remainingCoordinates.length > 1 ? [{
-            type: 'Feature',
-            geometry: {
-              type: 'LineString',
-              coordinates: remainingCoordinates
-            },
-            properties: {}
-          }] : []
-        });
-
-        mapRef.current.setPaintProperty('route-line-traveled', 'line-color', routeColor);
-        mapRef.current.setPaintProperty('route-line-remaining', 'line-color', routeColor);
-      }
-    };
-
-    loadRouteLine();
-  }, [selectedBus, isLoaded, positions]);
+      mapRef.current.setPaintProperty('route-line-traveled', 'line-color', routeColor);
+      mapRef.current.setPaintProperty('route-line-remaining', 'line-color', routeColor);
+    }
+  }, [selectedBus?.id, currentRouteData, positions, isLoaded]);
 
   const currentStyleUrlRef = useRef<string | null>(null);
   
@@ -526,58 +535,8 @@ export const MapContainer = ({ styleUrl, onSelectBus, selectedBus, onSelectRoute
       return;
     }
 
-    const map = mapRef.current;
-    
-    const updateSource = () => {
-      let source = map.getSource('buses') as maplibregl.GeoJSONSource;
-      if (!source) {
-        addBusesLayer(map);
-        source = map.getSource('buses') as maplibregl.GeoJSONSource;
-        if (!source) return;
-      }
-
-      const geoJsonData: GeoJSON.FeatureCollection = {
-        type: 'FeatureCollection',
-        features: positions.map(bus => {
-          const route = routesRef.current.get(bus.line);
-          const routeColor = route?.color ? `#${route.color}` : BRAND_COLORS.primary;
-          
-          const getLuminance = (hex: string) => {
-            const r = parseInt(hex.slice(1, 3), 16);
-            const g = parseInt(hex.slice(3, 5), 16);
-            const b = parseInt(hex.slice(5, 7), 16);
-            return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-          };
-
-          const isLight = getLuminance(routeColor) > 0.7;
-          const routeTextColor = isLight ? '#000000' : '#ffffff';
-          const isSelected = bus.id === selectedBusRef.current?.id;
-          
-          return {
-            type: 'Feature',
-            geometry: {
-              type: 'Point',
-              coordinates: [bus.longitude, bus.latitude],
-            },
-            properties: {
-              id: bus.id,
-              line: bus.line,
-              operator: bus.operator,
-              bearing: bus.bearing,
-              speed: bus.speed,
-              routeColor,
-              routeTextColor,
-              sortKey: isSelected ? 2 : 1
-            },
-          };
-        }),
-      };
-
-      source.setData(geoJsonData);
-    };
-
     updateSource();
-  }, [positions, isLoaded, addBusesLayer]);
+  }, [updateSource, isLoaded]);
 
   return (
     <div className="w-full h-full relative">
@@ -602,4 +561,3 @@ export const MapContainer = ({ styleUrl, onSelectBus, selectedBus, onSelectRoute
     </div>
   );
 };
-

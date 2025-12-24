@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { motion } from "framer-motion";
 import { ChevronLeft, MapPin, Loader2, Info, ExternalLink } from "lucide-react";
 import { GTFSRoute, GTFSStop } from "@/types/gtfs";
@@ -12,6 +12,20 @@ interface RouteDetailProps {
   selectedBusId?: string | null;
   busPosition?: { latitude: number; longitude: number; bearing?: number } | null;
 }
+
+// Extract distance calculation outside component to avoid recreating on every render
+const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+  const R = 6371e3;
+  const φ1 = lat1 * Math.PI / 180;
+  const φ2 = lat2 * Math.PI / 180;
+  const Δφ = (lat2 - lat1) * Math.PI / 180;
+  const Δλ = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ/2) * Math.sin(Δλ/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+};
 
 export const RouteDetail = ({ route, onBack, isDark = false, selectedBusId, busPosition }: RouteDetailProps) => {
   const [stops, setStops] = useState<{ direction0: GTFSStop[], direction1: GTFSStop[] }>({ direction0: [], direction1: [] });
@@ -50,22 +64,11 @@ export const RouteDetail = ({ route, onBack, isDark = false, selectedBusId, busP
     loadStops();
   }, [route.id]);
 
-  // Determine bus direction and auto-select it
-  useEffect(() => {
-    if (!selectedBusId || !busPosition || stops.direction0.length === 0 || stops.direction1.length === 0) return;
-
-    const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number) => {
-      const R = 6371e3;
-      const φ1 = lat1 * Math.PI / 180;
-      const φ2 = lat2 * Math.PI / 180;
-      const Δφ = (lat2 - lat1) * Math.PI / 180;
-      const Δλ = (lng2 - lng1) * Math.PI / 180;
-      const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-                Math.cos(φ1) * Math.cos(φ2) *
-                Math.sin(Δλ/2) * Math.sin(Δλ/2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-      return R * c;
-    };
+  // Memoize direction detection to avoid recalculating on every render
+  const detectedDirection = useMemo(() => {
+    if (!selectedBusId || !busPosition || stops.direction0.length === 0 || stops.direction1.length === 0) {
+      return 0 as 0 | 1;
+    }
 
     // Find nearest stop in each direction
     const findNearestInDirection = (directionStops: GTFSStop[]) => {
@@ -85,7 +88,7 @@ export const RouteDetail = ({ route, onBack, isDark = false, selectedBusId, busP
     const dir1 = findNearestInDirection(stops.direction1);
 
     // Determine direction based on which has closer stops and bearing alignment
-    let detectedDirection: 0 | 1 = 0;
+    let direction: 0 | 1 = 0;
     
     if (busPosition.bearing !== undefined && busPosition.bearing !== null) {
       const busBearing = busPosition.bearing;
@@ -107,149 +110,148 @@ export const RouteDetail = ({ route, onBack, isDark = false, selectedBusId, busP
       const dir1Aligned = checkDirectionAlignment(stops.direction1, dir1.index);
 
       if (dir1Aligned && !dir0Aligned) {
-        detectedDirection = 1;
+        direction = 1;
       } else if (dir0Aligned && !dir1Aligned) {
-        detectedDirection = 0;
+        direction = 0;
       } else {
         // Fallback to closest distance
-        detectedDirection = dir1.distance < dir0.distance ? 1 : 0;
+        direction = dir1.distance < dir0.distance ? 1 : 0;
       }
     } else {
-      detectedDirection = dir1.distance < dir0.distance ? 1 : 0;
+      direction = dir1.distance < dir0.distance ? 1 : 0;
     }
 
-    setActiveDirection(detectedDirection);
-  }, [selectedBusId, busPosition, stops]);
+    return direction;
+  }, [selectedBusId, busPosition, stops.direction0, stops.direction1]);
 
-  const currentStops = activeDirection === 0 ? stops.direction0 : stops.direction1;
+  // Update active direction when detected direction changes
+  useEffect(() => {
+    setActiveDirection(detectedDirection);
+  }, [detectedDirection]);
+
+  const currentStops = useMemo(() => 
+    activeDirection === 0 ? stops.direction0 : stops.direction1,
+    [activeDirection, stops.direction0, stops.direction1]
+  );
   const routeColor = route.color ? `#${route.color}` : 'var(--color-brand-primary)';
   const routeTextColor = route.textColor ? `#${route.textColor}` : '#ffffff';
 
-  // Calculate which stops have been passed and which is next
-  const getStopStatus = () => {
+  const [stopPositionsOnRoute, setStopPositionsOnRoute] = useState<number[]>([]);
+
+  // Pre-calculate stop positions on the route shape via Worker
+  useEffect(() => {
+    const currentShape = activeDirection === 0 ? routeShapes.direction0 : routeShapes.direction1;
+    if (currentStops.length === 0 || currentShape.length === 0) return;
+
+    let isMounted = true;
+    const calculate = async () => {
+      const positions = await gtfsService.calculateStopPositions(currentStops, currentShape);
+      if (isMounted) {
+        setStopPositionsOnRoute(positions);
+      }
+    };
+    calculate();
+    return () => { isMounted = false; };
+  }, [currentStops, routeShapes, activeDirection]);
+
+  // Memoize stop status calculation to avoid expensive recalculations on every render
+  const { passedStops, nextStopIndex } = useMemo(() => {
     if (!selectedBusId || !busPosition || currentStops.length === 0) {
       return { passedStops: new Set<number>(), nextStopIndex: null };
     }
+    
+    return ((): { passedStops: Set<number>, nextStopIndex: number | null } => {
+      const currentShape = activeDirection === 0 ? routeShapes.direction0 : routeShapes.direction1;
+      
+      if (currentShape.length === 0 || stopPositionsOnRoute.length === 0) {
+        // Fallback to simple distance-based if no shape data or pre-calculated positions
+        let nearestIndex = 0;
+        let minDistance = Infinity;
+        currentStops.forEach((stop, index) => {
+          const distance = calculateDistance(busPosition.latitude, busPosition.longitude, stop.lat, stop.lng);
+          if (distance < minDistance) {
+            minDistance = distance;
+            nearestIndex = index;
+          }
+        });
 
-    const currentShape = activeDirection === 0 ? routeShapes.direction0 : routeShapes.direction1;
-    if (currentShape.length === 0) {
-      // Fallback to simple distance-based if no shape data
-      const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number) => {
-        const R = 6371e3;
-        const φ1 = lat1 * Math.PI / 180;
-        const φ2 = lat2 * Math.PI / 180;
-        const Δφ = (lat2 - lat1) * Math.PI / 180;
-        const Δλ = (lng2 - lng1) * Math.PI / 180;
-        const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-                  Math.cos(φ1) * Math.cos(φ2) *
-                  Math.sin(Δλ/2) * Math.sin(Δλ/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        return R * c;
-      };
+        const passedStops = new Set<number>();
+        for (let i = 0; i < nearestIndex; i++) {
+          passedStops.add(i);
+        }
+        return { passedStops, nextStopIndex: nearestIndex < currentStops.length - 1 ? nearestIndex : null };
+      }
 
-      let nearestIndex = 0;
-      let minDistance = Infinity;
-      currentStops.forEach((stop, index) => {
-        const distance = calculateDistance(busPosition.latitude, busPosition.longitude, stop.lat, stop.lng);
-        if (distance < minDistance) {
-          minDistance = distance;
-          nearestIndex = index;
+      // Find closest point on route shape to bus position
+      // This is O(ShapePoints), much faster than O(Stops * ShapePoints)
+      let closestShapeIndex = 0;
+      let minShapeDistance = Infinity;
+      currentShape.forEach((point, index) => {
+        const distance = calculateDistance(busPosition.latitude, busPosition.longitude, point.lat, point.lng);
+        if (distance < minShapeDistance) {
+          minShapeDistance = distance;
+          closestShapeIndex = index;
         }
       });
+
+      // Find the last stop that comes before the bus's position using pre-calculated positions
+      let lastPassedStopIndex = -1;
+      for (let i = 0; i < stopPositionsOnRoute.length; i++) {
+        if (stopPositionsOnRoute[i] <= closestShapeIndex) {
+          lastPassedStopIndex = i;
+        } else {
+          break;
+        }
+      }
 
       const passedStops = new Set<number>();
-      for (let i = 0; i < nearestIndex; i++) {
-        passedStops.add(i);
-      }
-      return { passedStops, nextStopIndex: nearestIndex < currentStops.length - 1 ? nearestIndex : null };
-    }
+      let nextStopIndex: number | null = null;
 
-    const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number) => {
-      const R = 6371e3;
-      const φ1 = lat1 * Math.PI / 180;
-      const φ2 = lat2 * Math.PI / 180;
-      const Δφ = (lat2 - lat1) * Math.PI / 180;
-      const Δλ = (lng2 - lng1) * Math.PI / 180;
-      const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-                Math.cos(φ1) * Math.cos(φ2) *
-                Math.sin(Δλ/2) * Math.sin(Δλ/2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-      return R * c;
-    };
-
-    // Find closest point on route shape to bus position
-    let closestShapeIndex = 0;
-    let minShapeDistance = Infinity;
-    currentShape.forEach((point, index) => {
-      const distance = calculateDistance(busPosition.latitude, busPosition.longitude, point.lat, point.lng);
-      if (distance < minShapeDistance) {
-        minShapeDistance = distance;
-        closestShapeIndex = index;
-      }
-    });
-
-    // Find which stops come before the bus's position on the route
-    // Project each stop onto the route shape to find its position
-    const stopPositionsOnRoute: number[] = [];
-    currentStops.forEach((stop) => {
-      let closestStopPointIndex = 0;
-      let minStopDistance = Infinity;
-      currentShape.forEach((point, index) => {
-        const distance = calculateDistance(stop.lat, stop.lng, point.lat, point.lng);
-        if (distance < minStopDistance) {
-          minStopDistance = distance;
-          closestStopPointIndex = index;
+      // Mark all stops up to and including the last passed stop
+      if (lastPassedStopIndex >= 0) {
+        for (let i = 0; i <= lastPassedStopIndex; i++) {
+          passedStops.add(i);
         }
-      });
-      stopPositionsOnRoute.push(closestStopPointIndex);
-    });
-
-    // Find the last stop that comes before the bus's position
-    let lastPassedStopIndex = -1;
-    for (let i = 0; i < stopPositionsOnRoute.length; i++) {
-      if (stopPositionsOnRoute[i] <= closestShapeIndex) {
-        lastPassedStopIndex = i;
+        // Next stop is the one after the last passed
+        if (lastPassedStopIndex < currentStops.length - 1) {
+          nextStopIndex = lastPassedStopIndex + 1;
+        }
       } else {
-        break;
+        // Bus hasn't reached the first stop yet
+        nextStopIndex = 0;
       }
-    }
 
-    const passedStops = new Set<number>();
-    let nextStopIndex: number | null = null;
-
-    // Mark all stops up to and including the last passed stop
-    if (lastPassedStopIndex >= 0) {
-      for (let i = 0; i <= lastPassedStopIndex; i++) {
-        passedStops.add(i);
-      }
-      // Next stop is the one after the last passed
-      if (lastPassedStopIndex < currentStops.length - 1) {
-        nextStopIndex = lastPassedStopIndex + 1;
-      }
-    } else {
-      // Bus hasn't reached the first stop yet
-      nextStopIndex = 0;
-    }
-
-    return { passedStops, nextStopIndex };
-  };
-
-  const { passedStops, nextStopIndex } = getStopStatus();
+      return { passedStops, nextStopIndex };
+    })();
+  }, [selectedBusId, busPosition, currentStops, stopPositionsOnRoute, activeDirection, routeShapes]);
   const nextStopRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const lastScrollIndexRef = useRef<number | null>(null);
 
-  // Auto-scroll to next stop
+  // Auto-scroll to next stop (only when nextStopIndex actually changes)
   useEffect(() => {
+    if (loading || nextStopIndex === null) return;
+    
+    // Skip scroll if index hasn't changed
+    if (lastScrollIndexRef.current === nextStopIndex) return;
+    
     if (nextStopRef.current && containerRef.current) {
       const container = containerRef.current;
       const element = nextStopRef.current;
       
-      // Calculate position to be about 1/3 from the top
-      const targetScroll = element.offsetTop - (container.clientHeight * 0.3);
-      
-      container.scrollTo({
-        top: Math.max(0, targetScroll),
-        behavior: 'smooth'
+      // Use requestAnimationFrame to ensure DOM is ready
+      requestAnimationFrame(() => {
+        if (!nextStopRef.current || !containerRef.current) return;
+        
+        // Calculate position to be about 1/3 from the top
+        const targetScroll = element.offsetTop - (container.clientHeight * 0.3);
+        
+        container.scrollTo({
+          top: Math.max(0, targetScroll),
+          behavior: 'smooth'
+        });
+        
+        lastScrollIndexRef.current = nextStopIndex;
       });
     }
   }, [nextStopIndex, loading]);
@@ -416,4 +418,3 @@ export const RouteDetail = ({ route, onBack, isDark = false, selectedBusId, busP
     </div>
   );
 };
-

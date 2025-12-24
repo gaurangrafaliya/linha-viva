@@ -66,6 +66,7 @@ const App = () => {
         selectedBus={selectedBus}
         onSelectRoute={handleRouteSelect}
         theme={currentStyle.theme}
+        isDashboardExpanded={isDashboardExpanded}
       />
       
       <FloatingSearch 
