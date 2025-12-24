@@ -13,7 +13,7 @@ const PORTO_CENTER: [number, number] = [-8.6291, 41.1579];
 const INITIAL_ZOOM = 13;
 const MIN_ZOOM = 11.5;
 const PORTO_BOUNDS: [[number, number], [number, number]] = [
-  [-8.78, 41.05], // Southwest coordinates
+  [-8.85, 41.05], // Southwest coordinates
   [-8.4, 41.275]  // Northeast coordinates
 ];
 

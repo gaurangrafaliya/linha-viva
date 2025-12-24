@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { MapContainer } from "@/components/map/MapContainer";
 import { RouteDashboard } from "@/components/dashboard/RouteDashboard";
 import { FloatingSearch } from "@/components/dashboard/FloatingSearch";
+import { NetworkStats } from "@/components/dashboard/NetworkStats";
 import { MAP_STYLES } from "@/constants/mapStyles";
 import { cn } from "@/lib/utils";
 import { useBusPositions } from "@/hooks/useBusPositions";
@@ -92,10 +93,19 @@ const App = () => {
   // Filter states
   const [activeGroup, setActiveGroup] = useState<string | null>(null);
   const [selectedLines, setSelectedLines] = useState<string[]>([]);
+  const [totalRoutesCount, setTotalRoutesCount] = useState<number>(0);
   
   const { positions } = useBusPositions();
   
   const currentStyle = MAP_STYLES.VOYAGER;
+
+  useEffect(() => {
+    const fetchTotalRoutes = async () => {
+      const routes = await gtfsService.fetchRoutes();
+      setTotalRoutesCount(routes.length);
+    };
+    fetchTotalRoutes();
+  }, []);
 
   const handleBusSelect = useCallback((bus: SelectedBus | null) => {
     setSelectedBus(bus);
@@ -183,6 +193,10 @@ const App = () => {
       className="relative w-full h-screen overflow-hidden transition-colors duration-500 bg-white"
       aria-label="Porto Bus Live Visualization Map"
     >
+      <div className="fixed top-6 right-6 z-50">
+        <NetworkStats positions={positions} totalRoutesCount={totalRoutesCount} />
+      </div>
+
       <MapContainer 
         styleUrl={currentStyle.url} 
         onSelectBus={handleBusSelect}

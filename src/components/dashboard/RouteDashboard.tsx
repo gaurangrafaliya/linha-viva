@@ -487,14 +487,13 @@ export const RouteDashboard = memo(({
                   </div>
 
                   {/* Footer */}
-                  <div className="p-6 border-t flex justify-between items-center px-8 transition-colors duration-300 border-neutral-100/50 bg-neutral-50/30">
-                    <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">
-                      {filteredRoutes.length} <span className="font-medium opacity-60 ml-1">Lines</span>
-                    </span>
-                    <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/10 rounded-full">
-                      <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                      <span className="text-[9px] font-black uppercase tracking-wider text-green-600">
-                        Live Data
+                  <div className="p-6 border-t px-8 transition-colors duration-300 border-neutral-100/50 bg-neutral-50/30">
+                    <div className="flex justify-between items-center w-full">
+                      <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">
+                        {filteredRoutes.length} <span className="font-medium opacity-60 ml-1">Lines</span>
+                      </span>
+                      <span className="text-[9px] font-black uppercase tracking-wider text-neutral-400">
+                        Data provided by STCP
                       </span>
                     </div>
                   </div>
