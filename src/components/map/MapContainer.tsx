@@ -27,6 +27,7 @@ interface MapContainerProps {
   styleUrl: MapStyleUrl;
   onSelectBus: (bus: SelectedBus | null) => void;
   selectedBus: SelectedBus | null;
+  selectedRouteId: string | null;
   onSelectRoute: (routeId: string | null) => void;
   theme: Theme;
   isDashboardExpanded: boolean;
@@ -59,7 +60,16 @@ const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: numbe
   return R * c;
 };
 
-export const MapContainer = ({ styleUrl, onSelectBus, selectedBus, onSelectRoute, theme, isDashboardExpanded, activeDirection = 0 }: MapContainerProps) => {
+export const MapContainer = ({ 
+  styleUrl, 
+  onSelectBus, 
+  selectedBus, 
+  selectedRouteId,
+  onSelectRoute, 
+  theme, 
+  isDashboardExpanded, 
+  activeDirection = 0 
+}: MapContainerProps) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -68,10 +78,13 @@ export const MapContainer = ({ styleUrl, onSelectBus, selectedBus, onSelectRoute
   const routesRef = useRef<Map<string, GTFSRoute>>(new Map());
   const tripsRef = useRef<Map<string, string>>(new Map()); // line -> routeId
   const selectedBusRef = useRef<SelectedBus | null>(null);
+  const selectedRouteIdRef = useRef<string | null>(null);
   const [currentRouteData, setCurrentRouteData] = useState<{
     coordinates: [number, number][];
     routeColor: string;
   } | null>(null);
+  const [busDirections, setBusDirections] = useState<Map<string, 0 | 1>>(new Map());
+  const [routeStops, setRouteStops] = useState<{ direction0: GTFSStop[], direction1: GTFSStop[] } | null>(null);
 
   useEffect(() => {
     positionsRef.current = positions;
@@ -80,6 +93,100 @@ export const MapContainer = ({ styleUrl, onSelectBus, selectedBus, onSelectRoute
   useEffect(() => {
     selectedBusRef.current = selectedBus;
   }, [selectedBus]);
+
+  useEffect(() => {
+    selectedRouteIdRef.current = selectedRouteId;
+  }, [selectedRouteId]);
+
+  // Load route stops when selected route changes
+  useEffect(() => {
+    if (!selectedRouteId) {
+      setRouteStops(null);
+      return;
+    }
+
+    const loadStops = async () => {
+      const stops = await gtfsService.fetchStopsForRoute(selectedRouteId);
+      setRouteStops(stops);
+    };
+    loadStops();
+  }, [selectedRouteId]);
+
+  // Detect directions for all buses on the selected route
+  useEffect(() => {
+    if (!selectedRouteId || !routeStops || positions.length === 0) {
+      setBusDirections(new Map());
+      return;
+    }
+
+    const busesOnRoute = positions.filter(p => {
+      const routeId = tripsRef.current.get(p.line);
+      return routeId === selectedRouteId;
+    });
+
+    if (busesOnRoute.length === 0) {
+      setBusDirections(new Map());
+      return;
+    }
+
+    const newDirections = new Map<string, 0 | 1>();
+    
+    busesOnRoute.forEach(bus => {
+      const findNearest = (directionStops: GTFSStop[]) => {
+        if (directionStops.length === 0) return { index: -1, distance: Infinity };
+        let minDist = Infinity;
+        let nearestIdx = 0;
+        directionStops.forEach((stop, idx) => {
+          const dist = calculateDistance(bus.latitude, bus.longitude, stop.lat, stop.lng);
+          if (dist < minDist) {
+            minDist = dist;
+            nearestIdx = idx;
+          }
+        });
+        return { index: nearestIdx, distance: minDist };
+      };
+
+      const d0 = findNearest(routeStops.direction0);
+      const d1 = findNearest(routeStops.direction1);
+
+      if (routeStops.direction1.length === 0) {
+        newDirections.set(bus.id, 0);
+        return;
+      }
+      if (routeStops.direction0.length === 0) {
+        newDirections.set(bus.id, 1);
+        return;
+      }
+
+      let direction: 0 | 1 = 0;
+      if (bus.bearing !== undefined && bus.bearing !== null) {
+        const checkAlignment = (directionStops: GTFSStop[], nearestIdx: number) => {
+          if (nearestIdx < 0 || nearestIdx >= directionStops.length - 1) return false;
+          const nextStop = directionStops[nearestIdx + 1];
+          let bearingToNext = Math.atan2(nextStop.lng - bus.longitude, nextStop.lat - bus.latitude) * 180 / Math.PI;
+          if (bearingToNext < 0) bearingToNext += 360;
+          const bearingDiff = Math.abs(bearingToNext - bus.bearing!);
+          return (bearingDiff < 60 || bearingDiff > 300);
+        };
+
+        const d0Aligned = checkAlignment(routeStops.direction0, d0.index);
+        const d1Aligned = checkAlignment(routeStops.direction1, d1.index);
+
+        if (d1Aligned && !d0Aligned) {
+          direction = 1;
+        } else if (d0Aligned && !d1Aligned) {
+          direction = 0;
+        } else {
+          direction = d1.distance < d0.distance ? 1 : 0;
+        }
+      } else {
+        direction = d1.distance < d0.distance ? 1 : 0;
+      }
+      newDirections.set(bus.id, direction);
+    });
+
+    setBusDirections(newDirections);
+  }, [selectedRouteId, routeStops, positions]);
 
   const addBusesLayer = useCallback((map: maplibregl.Map) => {
     if (!map.getSource('buses')) {
@@ -220,7 +327,11 @@ export const MapContainer = ({ styleUrl, onSelectBus, selectedBus, onSelectRoute
         const routeColor = route?.color ? `#${route.color}` : BRAND_COLORS.primary;
         const isLight = getLuminance(routeColor) > 0.7;
         const routeTextColor = isLight ? '#000000' : '#ffffff';
-        const isSelected = bus.id === selectedBusRef.current?.id;
+        const isSelected = bus.id === selectedBus?.id;
+        const routeId = tripsRef.current.get(bus.line) || null;
+        const isOnSelectedRoute = !!selectedRouteId && routeId === selectedRouteId;
+        const busDirection = busDirections.get(bus.id);
+        const isOnSelectedDirection = isOnSelectedRoute && (busDirection === undefined || busDirection === activeDirection);
         
         return {
           type: 'Feature',
@@ -236,24 +347,27 @@ export const MapContainer = ({ styleUrl, onSelectBus, selectedBus, onSelectRoute
             speed: bus.speed,
             routeColor,
             routeTextColor,
-            sortKey: isSelected ? 2 : 1
+            routeId,
+            isOnSelectedRoute,
+            isOnSelectedDirection,
+            sortKey: isSelected ? 3 : (isOnSelectedDirection ? 2 : 1)
           },
         };
       }),
     };
 
     source.setData(geoJsonData);
-  }, [positions, isLoaded, addBusesLayer]);
+  }, [positions, isLoaded, addBusesLayer, selectedRouteId, selectedBus, busDirections, activeDirection]);
 
-  // Load route data only when selected bus changes its route
+  // Load route data when selected route or direction changes
   useEffect(() => {
-    if (!selectedBus?.routeId) {
+    if (!selectedRouteId) {
       setCurrentRouteData(null);
       return;
     }
 
     const loadRouteData = async () => {
-      const routeId = selectedBus.routeId!;
+      const routeId = selectedRouteId!;
       const [bestTrips, route] = await Promise.all([
         gtfsService.fetchRepresentativeTrips(routeId),
         gtfsService.fetchRoutes().then(routes => routes.find(r => r.id === routeId))
@@ -275,7 +389,7 @@ export const MapContainer = ({ styleUrl, onSelectBus, selectedBus, onSelectRoute
     };
 
     loadRouteData();
-  }, [selectedBus?.routeId, activeDirection]);
+  }, [selectedRouteId, activeDirection]);
 
   useEffect(() => {
     const loadRoutes = async () => {
@@ -380,23 +494,30 @@ export const MapContainer = ({ styleUrl, onSelectBus, selectedBus, onSelectRoute
     if (mapRef.current && isLoaded) {
       const selectedId = selectedBus?.id || '';
       const hasSelection = !!selectedBus;
+      const hasRouteSelection = !!selectedRouteId;
       
       mapRef.current.setPaintProperty('buses-layer', 'circle-radius', [
         'case',
         ['==', ['get', 'id'], selectedId],
         14,
+        ['get', 'isOnSelectedDirection'],
+        11,
         9
       ]);
       mapRef.current.setPaintProperty('buses-layer', 'circle-opacity', [
         'case',
         ['==', ['get', 'id'], selectedId],
         1,
-        hasSelection ? 0.3 : 1
+        ['get', 'isOnSelectedDirection'],
+        1,
+        hasSelection || hasRouteSelection ? 0.3 : 1
       ]);
       mapRef.current.setPaintProperty('buses-layer', 'circle-stroke-width', [
         'case',
         ['==', ['get', 'id'], selectedId],
         3,
+        ['get', 'isOnSelectedDirection'],
+        1.5,
         0.8
       ]);
       
@@ -405,17 +526,21 @@ export const MapContainer = ({ styleUrl, onSelectBus, selectedBus, onSelectRoute
           'case',
           ['==', ['get', 'id'], selectedId],
           10,
+          ['get', 'isOnSelectedDirection'],
+          8.5,
           7.5
         ]);
         mapRef.current.setPaintProperty('buses-labels', 'text-opacity', [
           'case',
           ['==', ['get', 'id'], selectedId],
           1,
-          hasSelection ? 0.3 : 1
+          ['get', 'isOnSelectedDirection'],
+          1,
+          hasSelection || hasRouteSelection ? 0.3 : 1
         ]);
       }
 
-      // Center map on selected bus with offset for dashboard
+      // Center map on selected bus or fit to route bounds
       if (selectedBus) {
         const busPos = positions.find(p => p.id === selectedBus.id);
         if (busPos) {
@@ -446,16 +571,38 @@ export const MapContainer = ({ styleUrl, onSelectBus, selectedBus, onSelectRoute
             lastCenteredPosRef.current = newPos;
           }
         }
+      } else if (selectedRouteId && currentRouteData?.coordinates.length) {
+        // Fit to route bounds if no specific bus is selected but a route is
+        const coordinates = currentRouteData.coordinates;
+        const bounds = coordinates.reduce((acc, coord) => {
+          return [
+            [Math.min(acc[0][0], coord[0]), Math.min(acc[0][1], coord[1])],
+            [Math.max(acc[1][0], coord[0]), Math.max(acc[1][1], coord[1])]
+          ];
+        }, [[coordinates[0][0], coordinates[0][1]], [coordinates[0][0], coordinates[0][1]]]);
+
+        mapRef.current.fitBounds(bounds as [[number, number], [number, number]], {
+          padding: {
+            left: isDashboardExpanded ? 450 : 50,
+            right: 50,
+            top: 50,
+            bottom: 50
+          },
+          duration: 1000,
+          essential: true
+        });
+        lastCenteredBusIdRef.current = null;
+        lastCenteredPosRef.current = null;
       } else {
         lastCenteredBusIdRef.current = null;
         lastCenteredPosRef.current = null;
       }
     }
-  }, [selectedBus?.id, positions, isLoaded, isDashboardExpanded]);
+  }, [selectedBus?.id, selectedRouteId, currentRouteData, positions, isLoaded, isDashboardExpanded]);
 
-  // Update route line for selected bus
+  // Update route line for selected route
   useEffect(() => {
-    if (!mapRef.current || !isLoaded || !selectedBus || !currentRouteData) {
+    if (!mapRef.current || !isLoaded || !currentRouteData) {
       const traveledSource = mapRef.current?.getSource('route-line-traveled') as maplibregl.GeoJSONSource;
       const remainingSource = mapRef.current?.getSource('route-line-remaining') as maplibregl.GeoJSONSource;
       if (traveledSource) traveledSource.setData({ type: 'FeatureCollection', features: [] });
@@ -464,8 +611,43 @@ export const MapContainer = ({ styleUrl, onSelectBus, selectedBus, onSelectRoute
     }
 
     const { coordinates, routeColor } = currentRouteData;
+    const traveledSource = mapRef.current.getSource('route-line-traveled') as maplibregl.GeoJSONSource;
+    const remainingSource = mapRef.current.getSource('route-line-remaining') as maplibregl.GeoJSONSource;
+
+    if (!traveledSource || !remainingSource) return;
+
+    // If no bus is selected, show the whole line as remaining
+    if (!selectedBus) {
+      traveledSource.setData({ type: 'FeatureCollection', features: [] });
+      remainingSource.setData({
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates },
+          properties: {}
+        }]
+      });
+      mapRef.current.setPaintProperty('route-line-remaining', 'line-color', routeColor);
+      mapRef.current.setPaintProperty('route-line-remaining', 'line-opacity', 0.8);
+      return;
+    }
+
     const busPosition = positions.find(b => b.id === selectedBus.id);
-    if (!busPosition) return;
+    if (!busPosition) {
+      // Fallback to showing whole line if bus position is not found
+      traveledSource.setData({ type: 'FeatureCollection', features: [] });
+      remainingSource.setData({
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates },
+          properties: {}
+        }]
+      });
+      mapRef.current.setPaintProperty('route-line-remaining', 'line-color', routeColor);
+      mapRef.current.setPaintProperty('route-line-remaining', 'line-opacity', 0.8);
+      return;
+    }
 
     // Find the closest point on the route to the bus
     let closestIndex = 0;
@@ -492,31 +674,28 @@ export const MapContainer = ({ styleUrl, onSelectBus, selectedBus, onSelectRoute
     const traveledCoordinates = [...coordinates.slice(0, segmentIndex + 1), [busPosition.longitude, busPosition.latitude] as [number, number]];
     const remainingCoordinates = [[busPosition.longitude, busPosition.latitude] as [number, number], ...coordinates.slice(segmentIndex + 1)];
 
-    const traveledSource = mapRef.current.getSource('route-line-traveled') as maplibregl.GeoJSONSource;
-    const remainingSource = mapRef.current.getSource('route-line-remaining') as maplibregl.GeoJSONSource;
+    traveledSource.setData({
+      type: 'FeatureCollection',
+      features: traveledCoordinates.length > 1 ? [{
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: traveledCoordinates },
+        properties: {}
+      }] : []
+    });
 
-    if (traveledSource && remainingSource) {
-      traveledSource.setData({
-        type: 'FeatureCollection',
-        features: traveledCoordinates.length > 1 ? [{
-          type: 'Feature',
-          geometry: { type: 'LineString', coordinates: traveledCoordinates },
-          properties: {}
-        }] : []
-      });
+    remainingSource.setData({
+      type: 'FeatureCollection',
+      features: remainingCoordinates.length > 1 ? [{
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: remainingCoordinates },
+        properties: {}
+      }] : []
+    });
 
-      remainingSource.setData({
-        type: 'FeatureCollection',
-        features: remainingCoordinates.length > 1 ? [{
-          type: 'Feature',
-          geometry: { type: 'LineString', coordinates: remainingCoordinates },
-          properties: {}
-        }] : []
-      });
-
-      mapRef.current.setPaintProperty('route-line-traveled', 'line-color', routeColor);
-      mapRef.current.setPaintProperty('route-line-remaining', 'line-color', routeColor);
-    }
+    mapRef.current.setPaintProperty('route-line-traveled', 'line-color', routeColor);
+    mapRef.current.setPaintProperty('route-line-traveled', 'line-opacity', 1);
+    mapRef.current.setPaintProperty('route-line-remaining', 'line-color', routeColor);
+    mapRef.current.setPaintProperty('route-line-remaining', 'line-opacity', 0.3);
   }, [selectedBus?.id, currentRouteData, positions, isLoaded]);
 
   const currentStyleUrlRef = useRef<string | null>(null);

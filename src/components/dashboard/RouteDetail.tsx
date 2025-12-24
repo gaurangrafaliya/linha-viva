@@ -55,7 +55,8 @@ const findActiveTrip = (
   trips: GTFSTrip[],
   stopTimesMap: Map<string, GTFSStopTime[]>,
   directionId: number,
-  currentTimeMinutes: number
+  currentTimeMinutes: number,
+  nextStopId?: string
 ): GTFSTrip | null => {
   const directionTrips = trips.filter(trip => trip.directionId === directionId);
   
@@ -66,30 +67,50 @@ const findActiveTrip = (
     const tripStopTimes = stopTimesMap.get(trip.tripId);
     if (!tripStopTimes || tripStopTimes.length === 0) continue;
 
-    const firstStopTime = parseGTFSTime(tripStopTimes[0].arrivalTime);
-    const lastStopTime = parseGTFSTime(tripStopTimes[tripStopTimes.length - 1].arrivalTime);
-
-    // Check if current time falls within this trip's time range
-    // Handle day rollover (times after midnight)
     let timeDiff: number;
-    if (firstStopTime <= lastStopTime) {
-      // Normal case: trip doesn't cross midnight
-      if (currentTimeMinutes >= firstStopTime && currentTimeMinutes <= lastStopTime) {
-        timeDiff = 0; // Current time is within trip range
-      } else if (currentTimeMinutes < firstStopTime) {
-        timeDiff = firstStopTime - currentTimeMinutes;
-      } else {
-        timeDiff = currentTimeMinutes - lastStopTime;
+
+    if (nextStopId) {
+      // If we have a specific stop, find the trip scheduled closest to now at that stop
+      const stopTime = tripStopTimes.find(st => st.stopId === nextStopId);
+      if (!stopTime) continue;
+      
+      const scheduledTime = parseGTFSTime(stopTime.arrivalTime);
+      timeDiff = Math.abs(currentTimeMinutes - scheduledTime);
+      
+      // Handle day rollover for time difference
+      if (timeDiff > 720) {
+        timeDiff = 1440 - timeDiff;
       }
     } else {
-      // Trip crosses midnight
-      if (currentTimeMinutes >= firstStopTime || currentTimeMinutes <= lastStopTime) {
-        timeDiff = 0; // Current time is within trip range
+      // Default logic: find trip whose time range includes current time
+      const firstStopTime = parseGTFSTime(tripStopTimes[0].arrivalTime);
+      const lastStopTime = parseGTFSTime(tripStopTimes[tripStopTimes.length - 1].arrivalTime);
+
+      if (firstStopTime <= lastStopTime) {
+        // Normal case: trip doesn't cross midnight
+        if (currentTimeMinutes >= firstStopTime && currentTimeMinutes <= lastStopTime) {
+          // Current time is within trip range. 
+          // Use a small timeDiff to prioritize active trips, but distinguish between them
+          const midTime = (firstStopTime + lastStopTime) / 2;
+          timeDiff = Math.abs(currentTimeMinutes - midTime) / 1000;
+        } else if (currentTimeMinutes < firstStopTime) {
+          timeDiff = firstStopTime - currentTimeMinutes;
+        } else {
+          timeDiff = currentTimeMinutes - lastStopTime;
+        }
       } else {
-        // Find minimum time difference
-        const diff1 = firstStopTime - currentTimeMinutes;
-        const diff2 = currentTimeMinutes - lastStopTime;
-        timeDiff = Math.min(diff1, diff2);
+        // Trip crosses midnight
+        if (currentTimeMinutes >= firstStopTime || currentTimeMinutes <= lastStopTime) {
+          timeDiff = 0; // Current time is within trip range
+        } else {
+          // Find minimum time difference with rollover awareness
+          const diff1 = Math.abs(firstStopTime - currentTimeMinutes);
+          const diff2 = Math.abs(currentTimeMinutes - lastStopTime);
+          timeDiff = Math.min(
+            diff1 > 720 ? 1440 - diff1 : diff1, 
+            diff2 > 720 ? 1440 - diff2 : diff2
+          );
+        }
       }
     }
 
@@ -165,7 +186,6 @@ export const RouteDetail = ({
   const [isManualDirection, setIsManualDirection] = useState(false);
   const [stopTimes, setStopTimes] = useState<GTFSStopTime[]>([]);
   const [trips, setTrips] = useState<GTFSTrip[]>([]);
-  const [activeTrip, setActiveTrip] = useState<GTFSTrip | null>(null);
   const [currentTime, setCurrentTime] = useState<number>(getCurrentTimeMinutes());
 
   const [bestTrips, setBestTrips] = useState<{ direction0: GTFSTrip | null, direction1: GTFSTrip | null }>({ direction0: null, direction1: null });
@@ -414,28 +434,17 @@ export const RouteDetail = ({
     return map;
   }, [trips, stopTimes]);
 
-  // Determine active trip based on current time and update time periodically
+  // Update time periodically
   useEffect(() => {
-    if (trips.length === 0 || routeStopTimesMap.size === 0) {
-      setActiveTrip(null);
-      return;
-    }
-
-    const updateTripAndTime = () => {
-      const newTimeMinutes = getCurrentTimeMinutes();
-      setCurrentTime(newTimeMinutes);
-      const trip = findActiveTrip(trips, routeStopTimesMap, activeDirection, newTimeMinutes);
-      setActiveTrip(trip);
+    const updateTime = () => {
+      setCurrentTime(getCurrentTimeMinutes());
     };
 
-    // Initial update
-    updateTripAndTime();
-
-    // Update every minute to keep trip selection and delay status current
-    const interval = setInterval(updateTripAndTime, 60000); // Update every minute
+    // Update every minute to keep delay status current
+    const interval = setInterval(updateTime, 60000); // Update every minute
 
     return () => clearInterval(interval);
-  }, [trips, routeStopTimesMap, activeDirection]);
+  }, []);
 
   const routeColor = route.color ? `#${route.color}` : 'var(--color-brand-primary)';
   const routeTextColor = route.textColor ? `#${route.textColor}` : '#ffffff';
@@ -528,6 +537,17 @@ export const RouteDetail = ({
       return { passedStops, nextStopIndex };
     })();
   }, [selectedBusId, busPosition, currentStops, stopPositionsOnRoute, activeDirection, routeShapes]);
+
+  // Determine active trip based on selected bus position or current time
+  const activeTrip = useMemo(() => {
+    if (trips.length === 0 || routeStopTimesMap.size === 0) return null;
+    
+    const nextStopId = (nextStopIndex !== null && currentStops[nextStopIndex]) 
+      ? currentStops[nextStopIndex].id 
+      : undefined;
+      
+    return findActiveTrip(trips, routeStopTimesMap, activeDirection, currentTime, nextStopId);
+  }, [trips, routeStopTimesMap, activeDirection, currentTime, nextStopIndex, currentStops]);
 
   // Calculate delay status for next stop
   const delayStatus = useMemo(() => {
@@ -665,21 +685,27 @@ export const RouteDetail = ({
         </div>
       </div>
 
-      {/* Other buses in same direction */}
-      {((activeDirection === 0 ? busesByDirection.direction0 : busesByDirection.direction1).length > 1) && (
-        <div className="px-6 pb-4">
-          <div className={cn(
-            "p-3 rounded-xl border flex flex-col gap-2",
-            isDark ? "bg-neutral-800/20 border-neutral-800/50" : "bg-neutral-50 border-neutral-100"
-          )}>
-            <div className="flex items-center justify-between">
-              <span className="text-[9px] font-black uppercase tracking-widest text-neutral-400">
-                Buses in this direction
-              </span>
-              <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-brand-primary/10 text-brand-primary">
-                {(activeDirection === 0 ? busesByDirection.direction0 : busesByDirection.direction1).length} ACTIVE
-              </span>
-            </div>
+      {/* Buses in this direction */}
+      <div className="px-6 pb-4">
+        <div className={cn(
+          "p-3 rounded-xl border flex flex-col gap-2",
+          isDark ? "bg-neutral-800/20 border-neutral-800/50" : "bg-neutral-50 border-neutral-100"
+        )}>
+          <div className="flex items-center justify-between">
+            <span className="text-[9px] font-black uppercase tracking-widest text-neutral-400">
+              Buses in this direction
+            </span>
+            <span className={cn(
+              "text-[9px] font-black px-1.5 py-0.5 rounded-full",
+              (activeDirection === 0 ? busesByDirection.direction0 : busesByDirection.direction1).length > 0
+                ? "bg-brand-primary/10 text-brand-primary"
+                : "bg-orange-500/10 text-orange-500"
+            )}>
+              {(activeDirection === 0 ? busesByDirection.direction0 : busesByDirection.direction1).length} ACTIVE
+            </span>
+          </div>
+          
+          {(activeDirection === 0 ? busesByDirection.direction0 : busesByDirection.direction1).length > 0 ? (
             <div className="flex flex-wrap gap-2">
               {(activeDirection === 0 ? busesByDirection.direction0 : busesByDirection.direction1).map(bus => (
                 <button
@@ -699,9 +725,14 @@ export const RouteDetail = ({
                 </button>
               ))}
             </div>
-          </div>
+          ) : (
+            <div className="flex items-center gap-2 py-1">
+              <Info size={14} className="text-orange-500/50" />
+              <p className="text-[10px] font-bold text-neutral-400">No active buses on this direction</p>
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Stops List */}
       <div 
@@ -724,6 +755,29 @@ export const RouteDetail = ({
             />
 
             <div className="space-y-6">
+              {!selectedBusId && (
+                <div className={cn(
+                  "flex items-center gap-3 p-4 rounded-xl border border-dashed mb-4",
+                  isDark ? "bg-neutral-800/10 border-neutral-700/50" : "bg-neutral-50 border-neutral-200"
+                )}>
+                  <div className="p-2 rounded-lg bg-orange-500/10 text-orange-500">
+                    <Info size={18} />
+                  </div>
+                  <div className="flex-1">
+                    <p className={cn(
+                      "text-[11px] font-black uppercase tracking-tight",
+                      isDark ? "text-neutral-300" : "text-neutral-700"
+                    )}>
+                      No bus selected
+                    </p>
+                    <p className="text-[10px] text-neutral-400 font-medium">
+                      {(activeDirection === 0 ? busesByDirection.direction0 : busesByDirection.direction1).length > 0 
+                        ? "Select a bus above to track its live progress"
+                        : "No buses currently active in this direction"}
+                    </p>
+                  </div>
+                </div>
+              )}
               {currentStops.map((stop, index) => {
                 const isPassed = passedStops.has(index);
                 const isNext = nextStopIndex === index;

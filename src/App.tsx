@@ -85,6 +85,7 @@ const detectBusDirection = async (
 
 const App = () => {
   const [currentStyleId, setCurrentStyleId] = useState<MapStyleId>('VOYAGER');
+  const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
   const [selectedBus, setSelectedBus] = useState<SelectedBus | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [isDashboardExpanded, setIsDashboardExpanded] = useState(true);
@@ -108,10 +109,14 @@ const App = () => {
 
   const handleBusSelect = (bus: SelectedBus | null) => {
     setSelectedBus(bus);
-    if (bus) setIsDashboardExpanded(true);
+    if (bus) {
+      setSelectedRouteId(bus.routeId);
+      setIsDashboardExpanded(true);
+    }
   };
 
   const handleRouteSelect = (routeId: string | null) => {
+    setSelectedRouteId(routeId);
     setSelectedBus(null);
     if (routeId) setIsDashboardExpanded(true);
   };
@@ -123,28 +128,31 @@ const App = () => {
   const handleClearSearch = () => {
     setSearchTerm("");
     setSelectedBus(null);
+    setSelectedRouteId(null);
   };
 
   const handleSwitchBusForDirection = useCallback(async (direction: 0 | 1) => {
-    if (!selectedBus?.routeId || !selectedBus?.line) {
+    if (!selectedRouteId) {
       return;
     }
 
-    // Find all buses on the same route
-    const busesOnRoute = positions.filter(bus => bus.line === selectedBus.line);
-    if (busesOnRoute.length === 0) {
-      return;
-    }
+    // Try to find the line name from selectedBus or positions
+    const currentLine = selectedBus?.line || positions.find(p => p.id === selectedBus?.id)?.line;
+    
+    // Find all buses on the same route if we have a line name
+    const busesOnRoute = currentLine 
+      ? positions.filter(bus => bus.line === currentLine)
+      : positions; // Fallback to all positions if no line name yet
 
-    // Detect direction for each bus and find one going in the requested direction
+    let foundBus = false;
     for (const bus of busesOnRoute) {
-      // Skip the currently selected bus
-      if (bus.id === selectedBus.id) continue;
+      // Skip the currently selected bus if it's the same
+      if (selectedBus && bus.id === selectedBus.id) continue;
 
       try {
         const busDirection = await detectBusDirection(
           { latitude: bus.latitude, longitude: bus.longitude, bearing: bus.bearing },
-          selectedBus.routeId
+          selectedRouteId
         );
 
         if (busDirection === direction) {
@@ -152,16 +160,22 @@ const App = () => {
           const newBus = {
             id: bus.id,
             line: bus.line,
-            routeId: selectedBus.routeId
+            routeId: selectedRouteId
           };
           setSelectedBus(newBus);
+          foundBus = true;
           return;
         }
       } catch (error) {
-        console.error('Error detecting bus direction:', error);
+        // Not on this route
       }
     }
-  }, [selectedBus, positions]);
+
+    // If we reach here, no bus was found in the requested direction
+    if (!foundBus) {
+      setSelectedBus(null);
+    }
+  }, [selectedBus, selectedRouteId, positions]);
 
   return (
     <main 
@@ -175,6 +189,7 @@ const App = () => {
         styleUrl={currentStyle.url} 
         onSelectBus={handleBusSelect}
         selectedBus={selectedBus}
+        selectedRouteId={selectedRouteId}
         onSelectRoute={handleRouteSelect}
         theme={currentStyle.theme}
         isDashboardExpanded={isDashboardExpanded}
@@ -202,7 +217,7 @@ const App = () => {
       </div>
 
       <RouteDashboard 
-        selectedRouteId={selectedBus?.routeId || null}
+        selectedRouteId={selectedRouteId}
         selectedBus={selectedBus}
         onRouteSelect={handleRouteSelect}
         onBusSelect={handleBusSelect}
@@ -214,6 +229,7 @@ const App = () => {
           setIsDashboardExpanded(newExpanded);
           if (!newExpanded) {
             setSelectedBus(null);
+            setSelectedRouteId(null);
           }
         }}
         onDirectionChange={setActiveDirection}
@@ -224,4 +240,5 @@ const App = () => {
 };
 
 export default App;
+
 
