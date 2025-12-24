@@ -150,17 +150,63 @@ export const gtfsService = {
     });
   },
 
-  fetchStopsForRoute: async (routeId: string): Promise<{ direction0: GTFSStop[], direction1: GTFSStop[] }> => {
-    const [trips, allStopTimes, allStops] = await Promise.all([
+  fetchRepresentativeTrips: async (routeId: string): Promise<{ direction0: GTFSTrip | null, direction1: GTFSTrip | null }> => {
+    const [trips, allStopTimes, routes] = await Promise.all([
       gtfsService.fetchTrips(routeId),
+      gtfsService.fetchStopTimes(),
+      gtfsService.fetchRoutes(),
+    ]);
+
+    const route = routes.find(r => r.id === routeId);
+    const terminals = route?.longName.split(' - ').map(t => t.trim().toLowerCase()) || [];
+
+    // Pre-calculate stop counts for trips in this route
+    const tripIdSet = new Set(trips.map(t => t.tripId));
+    const counts = new Map<string, number>();
+    allStopTimes.forEach(st => {
+      if (tripIdSet.has(st.tripId)) {
+        counts.set(st.tripId, (counts.get(st.tripId) || 0) + 1);
+      }
+    });
+
+    const getBestTrip = (directionId: number) => {
+      const directionTrips = trips.filter(t => t.directionId === directionId);
+      if (directionTrips.length === 0) return null;
+
+      const tripScores = directionTrips.map(trip => {
+        const stopCount = counts.get(trip.tripId) || 0;
+        const headsign = trip.headsign.toLowerCase();
+        
+        // Boost score if headsign matches one of the terminals in route long name
+        let score = stopCount;
+        if (terminals.some(t => headsign.includes(t) || t.includes(headsign))) {
+          score += 1000; // Large boost to prioritize main route trips
+        }
+        
+        return { trip, score };
+      });
+
+      return tripScores.reduce((prev, current) => 
+        (current.score > prev.score) ? current : prev
+      ).trip;
+    };
+
+    return {
+      direction0: getBestTrip(0),
+      direction1: getBestTrip(1),
+    };
+  },
+
+  fetchStopsForRoute: async (routeId: string): Promise<{ direction0: GTFSStop[], direction1: GTFSStop[] }> => {
+    const [bestTrips, allStopTimes, allStops] = await Promise.all([
+      gtfsService.fetchRepresentativeTrips(routeId),
       gtfsService.fetchStopTimes(),
       gtfsService.fetchStops(),
     ]);
 
     const stopsMap = new Map(allStops.map(s => [s.id, s]));
 
-    const getStopsForDirection = (directionId: number) => {
-      const trip = trips.find(t => t.directionId === directionId);
+    const getStopsForTrip = (trip: GTFSTrip | null) => {
       if (!trip) return [];
 
       const stopTimes = allStopTimes
@@ -173,8 +219,8 @@ export const gtfsService = {
     };
 
     return {
-      direction0: getStopsForDirection(0),
-      direction1: getStopsForDirection(1),
+      direction0: getStopsForTrip(bestTrips.direction0),
+      direction1: getStopsForTrip(bestTrips.direction1),
     };
   },
 

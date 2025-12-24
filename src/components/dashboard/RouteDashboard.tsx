@@ -19,6 +19,7 @@ interface RouteDashboardProps {
   selectedRouteId: string | null;
   selectedBus: SelectedBus | null;
   onRouteSelect: (routeId: string | null) => void;
+  onBusSelect: (bus: SelectedBus | null) => void;
   searchTerm: string;
   theme: Theme;
   isExpanded: boolean;
@@ -31,6 +32,7 @@ export const RouteDashboard = ({
   selectedRouteId, 
   selectedBus,
   onRouteSelect, 
+  onBusSelect,
   searchTerm, 
   theme,
   isExpanded,
@@ -323,6 +325,8 @@ export const RouteDashboard = ({
                       isDark={isDark}
                       selectedBusId={selectedBus?.id}
                       busPosition={selectedBus ? positions.find(p => p.id === selectedBus.id) || null : null}
+                      allBusesOnRoute={positions.filter(p => p.line === selectedRoute.shortName)}
+                      onBusSelect={onBusSelect}
                       onDirectionChange={onDirectionChange}
                       onSwitchBusForDirection={onSwitchBusForDirection}
                     />

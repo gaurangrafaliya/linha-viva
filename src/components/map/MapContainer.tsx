@@ -14,7 +14,7 @@ const INITIAL_ZOOM = 13;
 const MIN_ZOOM = 11.5;
 const PORTO_BOUNDS: [[number, number], [number, number]] = [
   [-8.78, 41.05], // Southwest coordinates
-  [-8.4, 41.25]  // Northeast coordinates
+  [-8.4, 41.275]  // Northeast coordinates
 ];
 
 interface SelectedBus {
@@ -254,16 +254,18 @@ export const MapContainer = ({ styleUrl, onSelectBus, selectedBus, onSelectRoute
 
     const loadRouteData = async () => {
       const routeId = selectedBus.routeId!;
-      const [trips, route] = await Promise.all([
-        gtfsService.fetchTrips(routeId),
+      const [bestTrips, route] = await Promise.all([
+        gtfsService.fetchRepresentativeTrips(routeId),
         gtfsService.fetchRoutes().then(routes => routes.find(r => r.id === routeId))
       ]);
       
-      // Use the trip for the active direction instead of just the first one
-      const trip = trips.find(t => t.directionId === activeDirection) || trips[0];
-      if (!trip?.shapeId) return;
+      // Use the representative trip for the active direction
+      const trip = activeDirection === 0 ? bestTrips.direction0 : bestTrips.direction1;
+      const finalTrip = trip || bestTrips.direction0 || bestTrips.direction1;
+      
+      if (!finalTrip?.shapeId) return;
 
-      const shapes = await gtfsService.fetchShape(trip.shapeId);
+      const shapes = await gtfsService.fetchShape(finalTrip.shapeId);
       if (shapes.length === 0) return;
 
       const coordinates = shapes.map(s => [s.lng, s.lat] as [number, number]);

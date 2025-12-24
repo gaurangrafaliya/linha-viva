@@ -1,9 +1,16 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { motion } from "framer-motion";
-import { ChevronLeft, MapPin, Loader2, Info, ExternalLink } from "lucide-react";
+import { Bus, ChevronLeft, MapPin, Loader2, Info, ExternalLink } from "lucide-react";
 import { GTFSRoute, GTFSStop, GTFSStopTime, GTFSTrip } from "@/types/gtfs";
 import { gtfsService } from "@/services/gtfsService";
 import { cn } from "@/lib/utils";
+import { BusPosition } from "@/types/bus";
+
+interface SelectedBus {
+  id: string;
+  line: string;
+  routeId: string | null;
+}
 
 interface RouteDetailProps {
   route: GTFSRoute;
@@ -11,6 +18,8 @@ interface RouteDetailProps {
   isDark?: boolean;
   selectedBusId?: string | null;
   busPosition?: { latitude: number; longitude: number; bearing?: number } | null;
+  allBusesOnRoute?: BusPosition[];
+  onBusSelect?: (bus: SelectedBus) => void;
   onDirectionChange?: (direction: 0 | 1) => void;
   onSwitchBusForDirection?: (direction: 0 | 1) => void;
 }
@@ -138,7 +147,17 @@ const calculateDelayStatus = (
   };
 };
 
-export const RouteDetail = ({ route, onBack, isDark = false, selectedBusId, busPosition, onDirectionChange, onSwitchBusForDirection }: RouteDetailProps) => {
+export const RouteDetail = ({ 
+  route, 
+  onBack, 
+  isDark = false, 
+  selectedBusId, 
+  busPosition, 
+  allBusesOnRoute = [], 
+  onBusSelect,
+  onDirectionChange, 
+  onSwitchBusForDirection 
+}: RouteDetailProps) => {
   const [stops, setStops] = useState<{ direction0: GTFSStop[], direction1: GTFSStop[] }>({ direction0: [], direction1: [] });
   const [routeShapes, setRouteShapes] = useState<{ direction0: { lat: number; lng: number }[], direction1: { lat: number; lng: number }[] }>({ direction0: [], direction1: [] });
   const [loading, setLoading] = useState(true);
@@ -149,32 +168,34 @@ export const RouteDetail = ({ route, onBack, isDark = false, selectedBusId, busP
   const [activeTrip, setActiveTrip] = useState<GTFSTrip | null>(null);
   const [currentTime, setCurrentTime] = useState<number>(getCurrentTimeMinutes());
 
+  const [bestTrips, setBestTrips] = useState<{ direction0: GTFSTrip | null, direction1: GTFSTrip | null }>({ direction0: null, direction1: null });
+
   useEffect(() => {
     const loadStops = async () => {
       setLoading(true);
-      const [stopsData, tripsData, stopTimesData] = await Promise.all([
+      const [stopsData, tripsData, stopTimesData, bestTripsData] = await Promise.all([
         gtfsService.fetchStopsForRoute(route.id),
         gtfsService.fetchTrips(route.id),
-        gtfsService.fetchStopTimes()
+        gtfsService.fetchStopTimes(),
+        gtfsService.fetchRepresentativeTrips(route.id)
       ]);
       setStops(stopsData);
       setTrips(tripsData);
       setStopTimes(stopTimesData);
+      setBestTrips(bestTripsData);
 
-      // Load shapes for both directions
+      // Load shapes for both directions based on representative trips
       const shapes0: { lat: number; lng: number }[] = [];
       const shapes1: { lat: number; lng: number }[] = [];
       
-      for (const trip of tripsData) {
-        if (trip.shapeId) {
-          const shape = await gtfsService.fetchShape(trip.shapeId);
-          const coords = shape.map(s => ({ lat: s.lat, lng: s.lng }));
-          if (trip.directionId === 0) {
-            shapes0.push(...coords);
-          } else {
-            shapes1.push(...coords);
-          }
-        }
+      if (bestTripsData.direction0?.shapeId) {
+        const shape = await gtfsService.fetchShape(bestTripsData.direction0.shapeId);
+        shapes0.push(...shape.map(s => ({ lat: s.lat, lng: s.lng })));
+      }
+
+      if (bestTripsData.direction1?.shapeId) {
+        const shape = await gtfsService.fetchShape(bestTripsData.direction1.shapeId);
+        shapes1.push(...shape.map(s => ({ lat: s.lat, lng: s.lng })));
       }
 
       setRouteShapes({ direction0: shapes0, direction1: shapes1 });
@@ -185,12 +206,13 @@ export const RouteDetail = ({ route, onBack, isDark = false, selectedBusId, busP
 
   // Memoize direction detection to avoid recalculating on every render
   const detectedDirection = useMemo(() => {
-    if (!selectedBusId || !busPosition || stops.direction0.length === 0 || stops.direction1.length === 0) {
+    if (!selectedBusId || !busPosition || (stops.direction0.length === 0 && stops.direction1.length === 0)) {
       return 0 as 0 | 1;
     }
 
     // Find nearest stop in each direction
     const findNearestInDirection = (directionStops: GTFSStop[]) => {
+      if (directionStops.length === 0) return { index: -1, distance: Infinity };
       let minDist = Infinity;
       let nearestIdx = 0;
       directionStops.forEach((stop, idx) => {
@@ -206,6 +228,10 @@ export const RouteDetail = ({ route, onBack, isDark = false, selectedBusId, busP
     const dir0 = findNearestInDirection(stops.direction0);
     const dir1 = findNearestInDirection(stops.direction1);
 
+    // If only one direction has stops, return that
+    if (stops.direction1.length === 0) return 0;
+    if (stops.direction0.length === 0) return 1;
+
     // Determine direction based on which has closer stops and bearing alignment
     let direction: 0 | 1 = 0;
     
@@ -213,14 +239,20 @@ export const RouteDetail = ({ route, onBack, isDark = false, selectedBusId, busP
       const busBearing = busPosition.bearing;
       // Check bearing alignment with next stops in each direction
       const checkDirectionAlignment = (directionStops: GTFSStop[], nearestIdx: number) => {
-        if (nearestIdx >= directionStops.length - 1) return false;
+        if (nearestIdx < 0 || nearestIdx >= directionStops.length - 1) return false;
         const nextStop = directionStops[nearestIdx + 1];
-        const bearingToNext = Math.atan2(
+        
+        // Calculate bearing from current position to next stop
+        let bearingToNext = Math.atan2(
           nextStop.lng - busPosition.longitude,
           nextStop.lat - busPosition.latitude
         ) * 180 / Math.PI;
+        
+        // Normalize bearing to 0-360
+        if (bearingToNext < 0) bearingToNext += 360;
+        
         const bearingDiff = Math.abs(bearingToNext - busBearing);
-        const isAligned = (bearingDiff < 45 || bearingDiff > 315);
+        const isAligned = (bearingDiff < 60 || bearingDiff > 300);
         
         return isAligned;
       };
@@ -264,6 +296,71 @@ export const RouteDetail = ({ route, onBack, isDark = false, selectedBusId, busP
     }
   }, [selectedBusId]);
 
+  // Group all buses on route by their detected direction
+  const busesByDirection = useMemo(() => {
+    if (!allBusesOnRoute || allBusesOnRoute.length === 0 || (stops.direction0.length === 0 && stops.direction1.length === 0)) {
+      return { direction0: [], direction1: [] };
+    }
+
+    const dir0: BusPosition[] = [];
+    const dir1: BusPosition[] = [];
+
+    allBusesOnRoute.forEach(bus => {
+      // Find nearest stop in each direction for this specific bus
+      const findNearest = (directionStops: GTFSStop[]) => {
+        if (directionStops.length === 0) return { index: -1, distance: Infinity };
+        let minDist = Infinity;
+        let nearestIdx = 0;
+        directionStops.forEach((stop, idx) => {
+          const dist = calculateDistance(bus.latitude, bus.longitude, stop.lat, stop.lng);
+          if (dist < minDist) {
+            minDist = dist;
+            nearestIdx = idx;
+          }
+        });
+        return { index: nearestIdx, distance: minDist };
+      };
+
+      const d0 = findNearest(stops.direction0);
+      const d1 = findNearest(stops.direction1);
+
+      if (stops.direction1.length === 0) {
+        dir0.push(bus);
+        return;
+      }
+      if (stops.direction0.length === 0) {
+        dir1.push(bus);
+        return;
+      }
+
+      let direction: 0 | 1 = 0;
+      if (bus.bearing !== undefined && bus.bearing !== null) {
+        const checkAlignment = (directionStops: GTFSStop[], nearestIdx: number) => {
+          if (nearestIdx < 0 || nearestIdx >= directionStops.length - 1) return false;
+          const nextStop = directionStops[nearestIdx + 1];
+          let bearingToNext = Math.atan2(nextStop.lng - bus.longitude, nextStop.lat - bus.latitude) * 180 / Math.PI;
+          if (bearingToNext < 0) bearingToNext += 360;
+          const bearingDiff = Math.abs(bearingToNext - bus.bearing!);
+          return (bearingDiff < 60 || bearingDiff > 300);
+        };
+
+        const d0Aligned = checkAlignment(stops.direction0, d0.index);
+        const d1Aligned = checkAlignment(stops.direction1, d1.index);
+
+        if (d1Aligned && !d0Aligned) direction = 1;
+        else if (d0Aligned && !d1Aligned) direction = 0;
+        else direction = d1.distance < d0.distance ? 1 : 0;
+      } else {
+        direction = d1.distance < d0.distance ? 1 : 0;
+      }
+
+      if (direction === 0) dir0.push(bus);
+      else dir1.push(bus);
+    });
+
+    return { direction0: dir0, direction1: dir1 };
+  }, [allBusesOnRoute, stops.direction0, stops.direction1]);
+
   const currentStops = useMemo(() => 
     activeDirection === 0 ? stops.direction0 : stops.direction1,
     [activeDirection, stops.direction0, stops.direction1]
@@ -271,11 +368,8 @@ export const RouteDetail = ({ route, onBack, isDark = false, selectedBusId, busP
 
   // Get destination names (headsigns) for each direction
   const directionLabels = useMemo(() => {
-    const direction0Trip = trips.find(t => t.directionId === 0);
-    const direction1Trip = trips.find(t => t.directionId === 1);
-    
-    const label0 = direction0Trip?.headsign || 'Outbound';
-    const label1 = direction1Trip?.headsign || 'Inbound';
+    const label0 = bestTrips.direction0?.headsign || 'Outbound';
+    const label1 = bestTrips.direction1?.headsign || 'Inbound';
     
     // If we have stops, we can also show origin → destination format
     const getOriginDestination = (directionStops: GTFSStop[]) => {
@@ -292,7 +386,7 @@ export const RouteDetail = ({ route, onBack, isDark = false, selectedBusId, busP
     const dir1Label = getOriginDestination(stops.direction1) || label1;
 
     return { direction0: dir0Label, direction1: dir1Label };
-  }, [trips, stops.direction0, stops.direction1]);
+  }, [bestTrips, stops.direction0, stops.direction1]);
 
   // Create memoized map of stopTimes by tripId for current route only (performance optimization)
   const routeStopTimesMap = useMemo(() => {
@@ -570,6 +664,44 @@ export const RouteDetail = ({ route, onBack, isDark = false, selectedBusId, busP
           </button>
         </div>
       </div>
+
+      {/* Other buses in same direction */}
+      {((activeDirection === 0 ? busesByDirection.direction0 : busesByDirection.direction1).length > 1) && (
+        <div className="px-6 pb-4">
+          <div className={cn(
+            "p-3 rounded-xl border flex flex-col gap-2",
+            isDark ? "bg-neutral-800/20 border-neutral-800/50" : "bg-neutral-50 border-neutral-100"
+          )}>
+            <div className="flex items-center justify-between">
+              <span className="text-[9px] font-black uppercase tracking-widest text-neutral-400">
+                Buses in this direction
+              </span>
+              <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-brand-primary/10 text-brand-primary">
+                {(activeDirection === 0 ? busesByDirection.direction0 : busesByDirection.direction1).length} ACTIVE
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(activeDirection === 0 ? busesByDirection.direction0 : busesByDirection.direction1).map(bus => (
+                <button
+                  key={bus.id}
+                  onClick={() => onBusSelect?.({ id: bus.id, line: bus.line, routeId: route.id })}
+                  className={cn(
+                    "flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all cursor-pointer",
+                    selectedBusId === bus.id
+                      ? "bg-brand-primary border-brand-primary text-white shadow-md scale-105"
+                      : (isDark ? "bg-neutral-800 border-neutral-700 text-neutral-400 hover:text-neutral-200" : "bg-white border-neutral-200 text-neutral-500 hover:text-neutral-700")
+                  )}
+                >
+                  <Bus size={12} strokeWidth={selectedBusId === bus.id ? 3 : 2} />
+                  <span className="text-[10px] font-black">
+                    {bus.id.split(':').pop() || bus.id}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Stops List */}
       <div 

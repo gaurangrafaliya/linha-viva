@@ -205,6 +205,7 @@ const App = () => {
         selectedRouteId={selectedBus?.routeId || null}
         selectedBus={selectedBus}
         onRouteSelect={handleRouteSelect}
+        onBusSelect={handleBusSelect}
         searchTerm={searchTerm}
         theme={currentStyle.theme}
         isExpanded={isDashboardExpanded}
