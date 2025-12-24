@@ -92,29 +92,40 @@ const App = () => {
   
   const currentStyle = MAP_STYLES.VOYAGER;
 
-  const handleBusSelect = (bus: SelectedBus | null) => {
+  const handleBusSelect = useCallback((bus: SelectedBus | null) => {
     setSelectedBus(bus);
     if (bus) {
       setSelectedRouteId(bus.routeId);
       setIsDashboardExpanded(true);
     }
-  };
+  }, []);
 
-  const handleRouteSelect = (routeId: string | null) => {
+  const handleRouteSelect = useCallback((routeId: string | null) => {
     setSelectedRouteId(routeId);
     setSelectedBus(null);
     if (routeId) setIsDashboardExpanded(true);
-  };
+  }, []);
 
-  const handleSearchChange = (value: string) => {
+  const handleSearchChange = useCallback((value: string) => {
     setSearchTerm(value);
-  };
+  }, []);
 
-  const handleClearSearch = () => {
+  const handleClearSearch = useCallback(() => {
     setSearchTerm("");
     setSelectedBus(null);
     setSelectedRouteId(null);
-  };
+  }, []);
+
+  const handleToggleExpand = useCallback(() => {
+    setIsDashboardExpanded(prev => {
+      const newExpanded = !prev;
+      if (!newExpanded) {
+        setSelectedBus(null);
+        setSelectedRouteId(null);
+      }
+      return newExpanded;
+    });
+  }, []);
 
   const handleSwitchBusForDirection = useCallback(async (direction: 0 | 1) => {
     if (!selectedRouteId) {
@@ -191,14 +202,7 @@ const App = () => {
         onBusSelect={handleBusSelect}
         searchTerm={searchTerm}
         isExpanded={isDashboardExpanded}
-        onToggleExpand={() => {
-          const newExpanded = !isDashboardExpanded;
-          setIsDashboardExpanded(newExpanded);
-          if (!newExpanded) {
-            setSelectedBus(null);
-            setSelectedRouteId(null);
-          }
-        }}
+        onToggleExpand={handleToggleExpand}
         onDirectionChange={setActiveDirection}
         onSwitchBusForDirection={handleSwitchBusForDirection}
       />

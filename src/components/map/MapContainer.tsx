@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, memo } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useBusPositions } from '@/hooks/useBusPositions';
@@ -59,7 +59,7 @@ const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: numbe
   return R * c;
 };
 
-export const MapContainer = ({ 
+export const MapContainer = memo(({ 
   styleUrl, 
   onSelectBus, 
   selectedBus, 
@@ -735,4 +735,4 @@ export const MapContainer = ({
       )}
     </div>
   );
-};
+});

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, Bus, ChevronLeft, ChevronRight, Filter } from "lucide-react";
 import { GTFSRoute } from "@/types/gtfs";
@@ -26,7 +26,7 @@ interface RouteDashboardProps {
   onSwitchBusForDirection?: (direction: 0 | 1) => void;
 }
 
-export const RouteDashboard = ({ 
+export const RouteDashboard = memo(({ 
   selectedRouteId, 
   selectedBus,
   onRouteSelect, 
@@ -40,12 +40,22 @@ export const RouteDashboard = ({
   const [routes, setRoutes] = useState<GTFSRoute[]>([]);
   const [stops, setStops] = useState<Record<string, string[]>>({}); // routeId -> stopNames[]
   const [loading, setLoading] = useState(true);
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(searchTerm);
   const { positions } = useBusPositions();
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
   
   const lookupsRef = useRef<{
     stopsMap: Map<string, string>;
     tripStopMap: Map<string, Set<string>>;
     routeTripsMap: Map<string, Set<string>>;
+    routeStopNamesMap: Map<string, Set<string>>;
   } | null>(null);
 
   useEffect(() => {
@@ -74,12 +84,32 @@ export const RouteDashboard = ({
         routeTripsMap.set(trip.routeId, existing);
       });
 
+      // Pre-calculate stop names per route for faster search
+      const routeStopNamesMap = new Map<string, Set<string>>();
+      routesData.forEach(route => {
+        const stopNames = new Set<string>();
+        const routeTrips = routeTripsMap.get(route.id);
+        if (routeTrips) {
+          routeTrips.forEach(tripId => {
+            const stopIds = tripStopMap.get(tripId);
+            if (stopIds) {
+              stopIds.forEach(stopId => {
+                const stopName = stopsMap.get(stopId);
+                if (stopName) stopNames.add(stopName.toLowerCase());
+              });
+            }
+          });
+        }
+        routeStopNamesMap.set(route.id, stopNames);
+      });
+
       const routeStops: Record<string, string[]> = {};
 
       lookupsRef.current = {
         stopsMap,
         tripStopMap,
         routeTripsMap,
+        routeStopNamesMap,
       };
 
       setRoutes(routesData);
@@ -92,9 +122,9 @@ export const RouteDashboard = ({
 
   const filteredRoutes = useMemo(() => {
     let result = routes;
-    const lowerSearch = searchTerm.toLowerCase();
+    const lowerSearch = debouncedSearchTerm.toLowerCase();
 
-    if (searchTerm) {
+    if (debouncedSearchTerm) {
       const scoredResults = routes
         .map(route => {
           let score = -1;
@@ -114,23 +144,13 @@ export const RouteDashboard = ({
           }
           // 4. Match in stop names
           else if (lookupsRef.current) {
-            const lookups = lookupsRef.current;
-            const routeTrips = lookups.routeTripsMap.get(route.id);
-            if (routeTrips) {
-              const stopNames = new Set<string>();
-              routeTrips.forEach((tripId: string) => {
-                const stopIds = lookups.tripStopMap.get(tripId);
-                if (stopIds) {
-                  stopIds.forEach((stopId: string) => {
-                    const stopName = lookups.stopsMap.get(stopId);
-                    if (stopName) stopNames.add(stopName.toLowerCase());
-                  });
+            const stopNames = lookupsRef.current.routeStopNamesMap.get(route.id);
+            if (stopNames) {
+              for (const name of stopNames) {
+                if (name.includes(lowerSearch)) {
+                  score = 100;
+                  break;
                 }
-              });
-              
-              const hasStopMatch = Array.from(stopNames).some(name => name.includes(lowerSearch));
-              if (hasStopMatch) {
-                score = 100;
               }
             }
           }
@@ -154,7 +174,7 @@ export const RouteDashboard = ({
 
     // Default sorting when no search term
     return [...result].sort(compareRoutes);
-  }, [routes, searchTerm]);
+  }, [routes, debouncedSearchTerm]);
 
   // Helper function for standard priority sorting
   function compareRoutes(a: GTFSRoute, b: GTFSRoute) {
@@ -330,4 +350,4 @@ export const RouteDashboard = ({
       </div>
     </div>
   );
-};
+});

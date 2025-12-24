@@ -2,6 +2,7 @@ import { Search, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import logo from "@/assets/logo.png";
 import { cn } from "@/lib/utils";
+import { memo } from "react";
 
 interface FloatingSearchProps {
   searchTerm: string;
@@ -10,7 +11,7 @@ interface FloatingSearchProps {
   isExpanded: boolean;
 }
 
-export const FloatingSearch = ({ searchTerm, onSearchChange, onClear, isExpanded }: FloatingSearchProps) => {
+export const FloatingSearch = memo(({ searchTerm, onSearchChange, onClear, isExpanded }: FloatingSearchProps) => {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     onSearchChange(e.target.value);
   };
@@ -81,5 +82,5 @@ export const FloatingSearch = ({ searchTerm, onSearchChange, onClear, isExpanded
       </AnimatePresence>
     </div>
   );
-};
+});
 
