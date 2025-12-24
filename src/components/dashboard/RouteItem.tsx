@@ -6,10 +6,9 @@ interface RouteItemProps {
   route: GTFSRoute;
   isSelected: boolean;
   onToggle: (routeId: string) => void;
-  isDark?: boolean;
 }
 
-export const RouteItem = ({ route, isSelected, onToggle, isDark = false }: RouteItemProps) => {
+export const RouteItem = ({ route, isSelected, onToggle }: RouteItemProps) => {
   const handleToggle = () => {
     onToggle(route.id);
   };
@@ -29,8 +28,8 @@ export const RouteItem = ({ route, isSelected, onToggle, isDark = false }: Route
       className={cn(
         "group rounded-xl transition-all duration-300",
         isSelected 
-          ? (isDark ? "bg-neutral-800 border border-neutral-700 shadow-sm" : "bg-neutral-50 border border-neutral-200 shadow-sm")
-          : (isDark ? "hover:bg-neutral-800/40" : "hover:bg-neutral-50")
+          ? "bg-neutral-50 border border-neutral-200 shadow-sm"
+          : "hover:bg-neutral-50"
       )}
     >
       <button
@@ -47,10 +46,7 @@ export const RouteItem = ({ route, isSelected, onToggle, isDark = false }: Route
         </div>
         
         <div className="flex-1 min-w-0">
-          <h3 className={cn(
-            "text-[13px] font-black truncate leading-tight tracking-tight",
-            isDark ? "text-neutral-50" : "text-neutral-800"
-          )}>
+          <h3 className="text-[13px] font-black truncate leading-tight tracking-tight text-neutral-800">
             {route.longName}
           </h3>
           <p className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider mt-0.5 truncate">

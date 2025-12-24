@@ -29,7 +29,6 @@ interface MapContainerProps {
   selectedBus: SelectedBus | null;
   selectedRouteId: string | null;
   onSelectRoute: (routeId: string | null) => void;
-  theme: Theme;
   isDashboardExpanded: boolean;
   activeDirection?: 0 | 1;
 }
@@ -66,7 +65,6 @@ export const MapContainer = ({
   selectedBus, 
   selectedRouteId,
   onSelectRoute, 
-  theme, 
   isDashboardExpanded, 
   activeDirection = 0 
 }: MapContainerProps) => {
@@ -725,19 +723,13 @@ export const MapContainer = ({
     <div className="w-full h-full relative">
       <div ref={mapContainer} className="w-full h-full" />
       {!isLoaded && (
-        <div className={cn(
-          "absolute inset-0 flex items-center justify-center transition-colors duration-500 z-20",
-          theme === 'dark' ? "bg-neutral-950" : "bg-white"
-        )}>
+        <div className="absolute inset-0 flex items-center justify-center transition-colors duration-500 z-20 bg-white">
           <div className="flex flex-col items-center gap-3">
             <div 
               className="w-10 h-10 border-4 border-t-transparent rounded-full animate-spin"
               style={{ borderColor: `${BRAND_COLORS.primary} transparent ${BRAND_COLORS.primary} ${BRAND_COLORS.primary}` }}
             ></div>
-            <p className={cn(
-              "font-medium",
-              theme === 'dark' ? "text-white" : "text-neutral-900"
-            )}>Loading Porto map...</p>
+            <p className="font-medium text-neutral-900">Loading Porto map...</p>
           </div>
         </div>
       )}

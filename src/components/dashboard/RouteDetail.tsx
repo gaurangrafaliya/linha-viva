@@ -15,7 +15,6 @@ interface SelectedBus {
 interface RouteDetailProps {
   route: GTFSRoute;
   onBack: () => void;
-  isDark?: boolean;
   selectedBusId?: string | null;
   busPosition?: { latitude: number; longitude: number; bearing?: number } | null;
   allBusesOnRoute?: BusPosition[];
@@ -171,7 +170,6 @@ const calculateDelayStatus = (
 export const RouteDetail = ({ 
   route, 
   onBack, 
-  isDark = false, 
   selectedBusId, 
   busPosition, 
   allBusesOnRoute = [], 
@@ -596,10 +594,7 @@ export const RouteDetail = ({
       <div className="pt-8 px-6 pb-6">
         <button 
           onClick={onBack}
-          className={cn(
-            "flex items-center gap-2 mb-6 px-3 py-1.5 rounded-lg transition-colors group cursor-pointer",
-            isDark ? "hover:bg-neutral-800 text-neutral-400" : "hover:bg-neutral-100 text-neutral-500"
-          )}
+          className="flex items-center gap-2 mb-6 px-3 py-1.5 rounded-lg transition-colors group cursor-pointer hover:bg-neutral-100 text-neutral-500"
         >
           <ChevronLeft size={16} className="group-hover:-translate-x-0.5 transition-transform" />
           <span className="text-[10px] font-black uppercase tracking-widest">Back to lines</span>
@@ -613,10 +608,7 @@ export const RouteDetail = ({
             {route.shortName}
           </div>
           <div className="min-w-0 flex-1">
-            <h2 className={cn(
-              "text-lg font-black leading-tight tracking-tight",
-              isDark ? "text-neutral-50" : "text-neutral-900"
-            )}>
+            <h2 className="text-lg font-black leading-tight tracking-tight text-neutral-900">
               {route.longName}
             </h2>
             <div className="flex items-center gap-2 mt-2">
@@ -640,10 +632,7 @@ export const RouteDetail = ({
 
       {/* Direction Switcher */}
       <div className="px-6 pb-4">
-        <div className={cn(
-          "flex p-1 rounded-xl",
-          isDark ? "bg-neutral-800/50" : "bg-neutral-100"
-        )}>
+        <div className="flex p-1 rounded-xl bg-neutral-100">
           <button
             onClick={() => {
               const directionChanged = activeDirection !== 0;
@@ -656,7 +645,7 @@ export const RouteDetail = ({
             className={cn(
               "flex-1 py-2 px-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all cursor-pointer truncate",
               activeDirection === 0 
-                ? (isDark ? "bg-neutral-700 text-white shadow-sm" : "bg-white text-neutral-900 shadow-sm")
+                ? "bg-white text-neutral-900 shadow-sm"
                 : "text-neutral-400 hover:text-neutral-600"
             )}
             title={directionLabels.direction0}
@@ -675,7 +664,7 @@ export const RouteDetail = ({
             className={cn(
               "flex-1 py-2 px-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all cursor-pointer truncate",
               activeDirection === 1 
-                ? (isDark ? "bg-neutral-700 text-white shadow-sm" : "bg-white text-neutral-900 shadow-sm")
+                ? "bg-white text-neutral-900 shadow-sm"
                 : "text-neutral-400 hover:text-neutral-600"
             )}
             title={directionLabels.direction1}
@@ -687,10 +676,7 @@ export const RouteDetail = ({
 
       {/* Buses in this direction */}
       <div className="px-6 pb-4">
-        <div className={cn(
-          "p-3 rounded-xl border flex flex-col gap-2",
-          isDark ? "bg-neutral-800/20 border-neutral-800/50" : "bg-neutral-50 border-neutral-100"
-        )}>
+        <div className="p-3 rounded-xl border flex flex-col gap-2 bg-neutral-50 border-neutral-100">
           <div className="flex items-center justify-between">
             <span className="text-[9px] font-black uppercase tracking-widest text-neutral-400">
               Buses in this direction
@@ -715,7 +701,7 @@ export const RouteDetail = ({
                     "flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all cursor-pointer",
                     selectedBusId === bus.id
                       ? "bg-brand-primary border-brand-primary text-white shadow-md scale-105"
-                      : (isDark ? "bg-neutral-800 border-neutral-700 text-neutral-400 hover:text-neutral-200" : "bg-white border-neutral-200 text-neutral-500 hover:text-neutral-700")
+                      : "bg-white border-neutral-200 text-neutral-500 hover:text-neutral-700"
                   )}
                 >
                   <Bus size={12} strokeWidth={selectedBusId === bus.id ? 3 : 2} />
@@ -747,27 +733,16 @@ export const RouteDetail = ({
         ) : currentStops.length > 0 ? (
           <div className="relative pt-2">
             {/* Timeline Line */}
-            <div 
-              className={cn(
-                "absolute left-[11px] top-6 bottom-6 w-0.5",
-                isDark ? "bg-neutral-800" : "bg-neutral-100"
-              )} 
-            />
+            <div className="absolute left-[11px] top-6 bottom-6 w-0.5 bg-neutral-100" />
 
             <div className="space-y-6">
               {!selectedBusId && (
-                <div className={cn(
-                  "flex items-center gap-3 p-4 rounded-xl border border-dashed mb-4",
-                  isDark ? "bg-neutral-800/10 border-neutral-700/50" : "bg-neutral-50 border-neutral-200"
-                )}>
+                <div className="flex items-center gap-3 p-4 rounded-xl border border-dashed mb-4 bg-neutral-50 border-neutral-200">
                   <div className="p-2 rounded-lg bg-orange-500/10 text-orange-500">
                     <Info size={18} />
                   </div>
                   <div className="flex-1">
-                    <p className={cn(
-                      "text-[11px] font-black uppercase tracking-tight",
-                      isDark ? "text-neutral-300" : "text-neutral-700"
-                    )}>
+                    <p className="text-[11px] font-black uppercase tracking-tight text-neutral-700">
                       No bus selected
                     </p>
                     <p className="text-[10px] text-neutral-400 font-medium">
@@ -795,16 +770,15 @@ export const RouteDetail = ({
                     <div className="relative z-10 mt-1.5">
                       <div 
                         className={cn(
-                          "w-[24px] h-[24px] rounded-full flex items-center justify-center border-4 transition-transform group-hover:scale-110",
-                          isDark ? "bg-neutral-900 border-neutral-800" : "bg-white border-neutral-100",
+                          "w-[24px] h-[24px] rounded-full flex items-center justify-center border-4 transition-transform group-hover:scale-110 bg-white border-neutral-100",
                           isTerminal && "border-brand-primary",
                           isNext && "border-brand-primary ring-2 ring-brand-primary/50",
-                          isPassed && !isNext && (isDark ? "bg-brand-primary/20 border-brand-primary/40" : "bg-brand-primary/10 border-brand-primary/30")
+                          isPassed && !isNext && "bg-brand-primary/10 border-brand-primary/30"
                         )}
                       >
                         <div className={cn(
                           "w-1.5 h-1.5 rounded-full transition-colors",
-                          (isTerminal || isNext || isPassed) ? "bg-brand-primary" : (isDark ? "bg-neutral-700" : "bg-neutral-300"),
+                          (isTerminal || isNext || isPassed) ? "bg-brand-primary" : "bg-neutral-300",
                           "group-hover:bg-brand-primary"
                         )} />
                       </div>
@@ -813,8 +787,7 @@ export const RouteDetail = ({
                     <div className="flex-1 min-w-0">
                       <div className="flex items-baseline justify-between gap-2">
                         <p className={cn(
-                          "text-[12px] font-bold leading-tight transition-colors",
-                          isDark ? "text-neutral-200 group-hover:text-white" : "text-neutral-700 group-hover:text-neutral-900",
+                          "text-[12px] font-bold leading-tight transition-colors text-neutral-700 group-hover:text-neutral-900",
                           isNext && "text-brand-primary",
                           isPassed && !isNext && "opacity-60"
                         )}>
@@ -825,17 +798,11 @@ export const RouteDetail = ({
                         {isNext && delayStatus && (
                           <div className="flex items-center gap-1.5 leading-none">
                             {delayStatus.status === 'late' && (
-                              <span className={cn(
-                                "text-[11px] font-medium line-through opacity-40",
-                                isDark ? "text-neutral-400" : "text-neutral-500"
-                              )}>
+                              <span className="text-[11px] font-medium line-through opacity-40 text-neutral-500">
                                 {delayStatus.scheduledTime}
                               </span>
                             )}
-                            <span className={cn(
-                              "text-[12px] font-bold",
-                              isDark ? "text-neutral-200" : "text-neutral-900"
-                            )}>
+                            <span className="text-[12px] font-bold text-neutral-900">
                               {delayStatus.status === 'on-time' ? delayStatus.scheduledTime : delayStatus.estimatedTime}
                             </span>
                           </div>
@@ -847,8 +814,8 @@ export const RouteDetail = ({
                           <span className={cn(
                             "text-[10px] font-black uppercase tracking-wider whitespace-nowrap",
                             delayStatus.status === 'on-time' 
-                              ? (isDark ? "text-green-400" : "text-green-600")
-                              : (isDark ? "text-orange-400" : "text-orange-600")
+                              ? "text-green-600"
+                              : "text-orange-600"
                           )}>
                             {delayStatus.status === 'on-time' ? 'On Time' : `Late ${delayStatus.delayMinutes} mins`}
                           </span>

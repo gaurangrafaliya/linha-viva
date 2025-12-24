@@ -1,9 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { MapContainer } from "@/components/map/MapContainer";
-import { MapSettings } from "@/components/map/MapSettings";
 import { RouteDashboard } from "@/components/dashboard/RouteDashboard";
 import { FloatingSearch } from "@/components/dashboard/FloatingSearch";
-import { MAP_STYLES, MapStyleId } from "@/constants/mapStyles";
+import { MAP_STYLES } from "@/constants/mapStyles";
 import { cn } from "@/lib/utils";
 import { useBusPositions } from "@/hooks/useBusPositions";
 import { gtfsService } from "@/services/gtfsService";
@@ -84,7 +83,6 @@ const detectBusDirection = async (
 };
 
 const App = () => {
-  const [currentStyleId, setCurrentStyleId] = useState<MapStyleId>('VOYAGER');
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
   const [selectedBus, setSelectedBus] = useState<SelectedBus | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -92,20 +90,7 @@ const App = () => {
   const [activeDirection, setActiveDirection] = useState<0 | 1>(0);
   const { positions } = useBusPositions();
   
-  const currentStyle = MAP_STYLES[currentStyleId];
-
-  // Sync theme with the HTML element for global Tailwind support
-  useEffect(() => {
-    if (currentStyle.theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, [currentStyle.theme]);
-
-  const handleStyleChange = (styleId: MapStyleId) => {
-    setCurrentStyleId(styleId);
-  };
+  const currentStyle = MAP_STYLES.VOYAGER;
 
   const handleBusSelect = (bus: SelectedBus | null) => {
     setSelectedBus(bus);
@@ -179,10 +164,7 @@ const App = () => {
 
   return (
     <main 
-      className={cn(
-        "relative w-full h-screen overflow-hidden transition-colors duration-500",
-        currentStyle.theme === 'dark' ? "bg-neutral-950" : "bg-white"
-      )}
+      className="relative w-full h-screen overflow-hidden transition-colors duration-500 bg-white"
       aria-label="Porto Bus Live Visualization Map"
     >
       <MapContainer 
@@ -191,7 +173,6 @@ const App = () => {
         selectedBus={selectedBus}
         selectedRouteId={selectedRouteId}
         onSelectRoute={handleRouteSelect}
-        theme={currentStyle.theme}
         isDashboardExpanded={isDashboardExpanded}
         activeDirection={activeDirection}
       />
@@ -200,21 +181,8 @@ const App = () => {
         searchTerm={searchTerm}
         onSearchChange={handleSearchChange}
         onClear={handleClearSearch}
-        theme={currentStyle.theme}
         isExpanded={isDashboardExpanded}
       />
-
-      <div 
-        className="absolute top-6 right-6 z-40 pointer-events-none"
-        role="complementary"
-        aria-label="Map Controls"
-      >
-        <MapSettings 
-          currentStyleId={currentStyle.id} 
-          onStyleChange={handleStyleChange} 
-          theme={currentStyle.theme}
-        />
-      </div>
 
       <RouteDashboard 
         selectedRouteId={selectedRouteId}
@@ -222,7 +190,6 @@ const App = () => {
         onRouteSelect={handleRouteSelect}
         onBusSelect={handleBusSelect}
         searchTerm={searchTerm}
-        theme={currentStyle.theme}
         isExpanded={isDashboardExpanded}
         onToggleExpand={() => {
           const newExpanded = !isDashboardExpanded;

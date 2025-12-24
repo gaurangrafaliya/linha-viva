@@ -6,7 +6,6 @@ import { gtfsService } from "@/services/gtfsService";
 import { RouteItem } from "./RouteItem";
 import { RouteDetail } from "./RouteDetail";
 import { cn } from "@/lib/utils";
-import { Theme } from "@/constants/mapStyles";
 import { useBusPositions } from "@/hooks/useBusPositions";
 
 interface SelectedBus {
@@ -21,7 +20,6 @@ interface RouteDashboardProps {
   onRouteSelect: (routeId: string | null) => void;
   onBusSelect: (bus: SelectedBus | null) => void;
   searchTerm: string;
-  theme: Theme;
   isExpanded: boolean;
   onToggleExpand: () => void;
   onDirectionChange?: (direction: 0 | 1) => void;
@@ -34,13 +32,11 @@ export const RouteDashboard = ({
   onRouteSelect, 
   onBusSelect,
   searchTerm, 
-  theme,
   isExpanded,
   onToggleExpand,
   onDirectionChange,
   onSwitchBusForDirection
 }: RouteDashboardProps) => {
-  const isDark = theme === 'dark';
   const [routes, setRoutes] = useState<GTFSRoute[]>([]);
   const [stops, setStops] = useState<Record<string, string[]>>({}); // routeId -> stopNames[]
   const [loading, setLoading] = useState(true);
@@ -215,16 +211,10 @@ export const RouteDashboard = ({
             x: isExpanded ? 0 : -40
           }}
           transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-          className={cn(
-            "border rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.1)] flex flex-col h-full pointer-events-auto overflow-hidden relative transition-colors duration-300",
-            isDark ? "bg-neutral-900 border-neutral-800" : "bg-white border-neutral-200"
-          )}
+          className="border rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.1)] flex flex-col h-full pointer-events-auto overflow-hidden relative transition-colors duration-300 bg-white border-neutral-200"
         >
           {/* Handle bar for "Sheet" feel */}
-          <div className={cn(
-            "absolute top-2 left-1/2 -translate-x-1/2 w-8 h-1 rounded-full z-50",
-            isDark ? "bg-neutral-800" : "bg-neutral-100"
-          )} />
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 w-8 h-1 rounded-full z-50 bg-neutral-100" />
 
           <div className="relative flex-1 overflow-hidden">
             <AnimatePresence initial={false} mode="wait">
@@ -241,10 +231,7 @@ export const RouteDashboard = ({
                   <div className="pt-8 px-8 pb-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <h2 className={cn(
-                          "text-xl font-black leading-tight tracking-tight",
-                          isDark ? "text-neutral-50" : "text-neutral-900"
-                        )}>
+                        <h2 className="text-xl font-black leading-tight tracking-tight text-neutral-900">
                           {searchTerm ? "Search Results" : "All Lines"}
                         </h2>
                         <p className="text-[10px] text-neutral-400 font-bold uppercase tracking-widest mt-0.5">
@@ -275,7 +262,6 @@ export const RouteDashboard = ({
                             route={route}
                             isSelected={false}
                             onToggle={handleToggleRoute}
-                            isDark={isDark}
                           />
                         ))}
                       </div>
@@ -291,19 +277,13 @@ export const RouteDashboard = ({
                   </div>
 
                   {/* Footer */}
-                  <div className={cn(
-                    "p-6 border-t flex justify-between items-center px-8 transition-colors duration-300",
-                    isDark ? "border-neutral-800/50 bg-neutral-800/10" : "border-neutral-100/50 bg-neutral-50/30"
-                  )}>
+                  <div className="p-6 border-t flex justify-between items-center px-8 transition-colors duration-300 border-neutral-100/50 bg-neutral-50/30">
                     <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">
                       {filteredRoutes.length} <span className="font-medium opacity-60 ml-1">Lines</span>
                     </span>
                     <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/10 rounded-full">
                       <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                      <span className={cn(
-                        "text-[9px] font-black uppercase tracking-wider",
-                        isDark ? "text-green-400" : "text-green-600"
-                      )}>
+                      <span className="text-[9px] font-black uppercase tracking-wider text-green-600">
                         Live Data
                       </span>
                     </div>
@@ -322,7 +302,6 @@ export const RouteDashboard = ({
                     <RouteDetail 
                       route={selectedRoute} 
                       onBack={() => onRouteSelect(null)} 
-                      isDark={isDark}
                       selectedBusId={selectedBus?.id}
                       busPosition={selectedBus ? positions.find(p => p.id === selectedBus.id) || null : null}
                       allBusesOnRoute={positions.filter(p => p.line === selectedRoute.shortName)}
@@ -341,8 +320,7 @@ export const RouteDashboard = ({
         <button
           onClick={onToggleExpand}
           className={cn(
-            "absolute top-1/2 -translate-y-1/2 w-8 h-12 border shadow-xl pointer-events-auto flex items-center justify-center text-neutral-400 hover:text-brand-primary transition-all group z-40 focus:outline-none rounded-xl cursor-pointer",
-            isDark ? "bg-neutral-900 border-neutral-800" : "bg-white border-neutral-200",
+            "absolute top-1/2 -translate-y-1/2 w-8 h-12 border shadow-xl pointer-events-auto flex items-center justify-center text-neutral-400 hover:text-brand-primary transition-all group z-40 focus:outline-none rounded-xl cursor-pointer bg-white border-neutral-200",
             isExpanded ? "-right-4" : "-left-1"
           )}
           aria-label={isExpanded ? "Collapse dashboard" : "Expand dashboard"}
