@@ -26,7 +26,7 @@ export const RouteItem = ({ route, isSelected, onToggle }: RouteItemProps) => {
   return (
     <div 
       className={cn(
-        "group rounded-xl transition-all duration-300",
+        "group rounded-xl transition-all duration-300 relative",
         isSelected 
           ? "bg-neutral-50 border border-neutral-200 shadow-sm"
           : "hover:bg-neutral-50"

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, Bus, ChevronLeft, ChevronRight, Filter } from "lucide-react";
+import { Loader2, Bus, ChevronLeft, ChevronRight, Filter, Check } from "lucide-react";
 import { GTFSRoute } from "@/types/gtfs";
 import { gtfsService } from "@/services/gtfsService";
 import { RouteItem } from "./RouteItem";
@@ -24,7 +24,15 @@ interface RouteDashboardProps {
   onToggleExpand: () => void;
   onDirectionChange?: (direction: 0 | 1) => void;
   onSwitchBusForDirection?: (direction: 0 | 1) => void;
+  
+  // Filter Props
+  activeGroup: string | null;
+  setActiveGroup: (val: string | null | ((prev: string | null) => string | null)) => void;
+  selectedLines: string[];
+  setSelectedLines: (val: string[] | ((prev: string[]) => string[])) => void;
 }
+
+const LINE_GROUPS = ["200", "300", "400", "500", "600", "700", "800", "900", "Night", "Zonal"];
 
 export const RouteDashboard = memo(({ 
   selectedRouteId, 
@@ -35,13 +43,36 @@ export const RouteDashboard = memo(({
   isExpanded,
   onToggleExpand,
   onDirectionChange,
-  onSwitchBusForDirection
+  onSwitchBusForDirection,
+  activeGroup,
+  setActiveGroup,
+  selectedLines,
+  setSelectedLines
 }: RouteDashboardProps) => {
   const [routes, setRoutes] = useState<GTFSRoute[]>([]);
   const [stops, setStops] = useState<Record<string, string[]>>({}); // routeId -> stopNames[]
   const [loading, setLoading] = useState(true);
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(searchTerm);
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const { positions } = useBusPositions();
+
+  const isFilterActive = selectedLines.length > 0;
+
+  const handleToggleGroup = (group: string) => {
+    setActiveGroup(prev => prev === group ? null : group);
+  };
+
+  const handleToggleLineFilter = (shortName: string) => {
+    setSelectedLines(prev => 
+      prev.includes(shortName) 
+        ? prev.filter(s => s !== shortName) 
+        : [...prev, shortName]
+    );
+  };
+
+  const handleToggleFilterPanel = () => {
+    setIsFilterPanelOpen(prev => !prev);
+  };
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -120,12 +151,20 @@ export const RouteDashboard = memo(({
     loadData();
   }, []);
 
+  const activeLineNames = useMemo(() => new Set(positions.map(p => p.line)), [positions]);
+
   const filteredRoutes = useMemo(() => {
     let result = routes;
+
+    // Apply Specific Line filters (Only if there are any selected)
+    if (selectedLines.length > 0) {
+      result = result.filter(route => selectedLines.includes(route.shortName));
+    }
+
     const lowerSearch = debouncedSearchTerm.toLowerCase();
 
     if (debouncedSearchTerm) {
-      const scoredResults = routes
+      const scoredResults = result
         .map(route => {
           let score = -1;
 
@@ -174,7 +213,7 @@ export const RouteDashboard = memo(({
 
     // Default sorting when no search term
     return [...result].sort(compareRoutes);
-  }, [routes, debouncedSearchTerm]);
+  }, [routes, debouncedSearchTerm, selectedLines, activeLineNames]);
 
   // Helper function for standard priority sorting
   function compareRoutes(a: GTFSRoute, b: GTFSRoute) {
@@ -252,19 +291,170 @@ export const RouteDashboard = memo(({
                     <div className="flex items-center justify-between">
                       <div>
                         <h2 className="text-xl font-black leading-tight tracking-tight text-neutral-900">
-                          {searchTerm ? "Search Results" : "All Lines"}
+                          {searchTerm || isFilterActive ? "Filtered Lines" : "All Lines"}
                         </h2>
                         <p className="text-[10px] text-neutral-400 font-bold uppercase tracking-widest mt-0.5">
-                          {searchTerm ? `${filteredRoutes.length} lines found` : `${routes.length} lines in network`}
+                          {searchTerm || isFilterActive 
+                            ? `${filteredRoutes.length} lines found` 
+                            : `${routes.length} lines in network`}
                         </p>
                       </div>
                       <button 
-                        className="p-2.5 text-neutral-400 hover:text-brand-primary hover:bg-brand-primary/5 rounded-xl transition-all cursor-pointer"
+                        onClick={handleToggleFilterPanel}
+                        className={cn(
+                          "p-2.5 rounded-xl transition-all cursor-pointer relative",
+                          isFilterPanelOpen || isFilterActive 
+                            ? "text-brand-primary bg-brand-primary/10" 
+                            : "text-neutral-400 hover:text-brand-primary hover:bg-brand-primary/5"
+                        )}
                         aria-label="Filter routes"
+                        aria-expanded={isFilterPanelOpen}
                       >
                         <Filter size={18} strokeWidth={2.5} />
+                        {isFilterActive && (
+                          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-brand-primary rounded-full border-2 border-white" />
+                        )}
                       </button>
                     </div>
+
+                    <AnimatePresence>
+                      {isFilterPanelOpen && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+                          className="overflow-hidden mt-4"
+                        >
+                          <div className="flex flex-col gap-4 pb-2">
+                            {/* Line Groups */}
+                            <div className="flex flex-col gap-2">
+                              <span className="text-[11px] font-black uppercase tracking-wider text-neutral-500 px-1">Browse Groups</span>
+                              <div className="flex flex-wrap gap-1.5">
+                                {LINE_GROUPS.map(group => (
+                                  <button
+                                    key={group}
+                                    onClick={() => handleToggleGroup(group)}
+                                    className={cn(
+                                      "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-tight transition-all",
+                                      activeGroup === group
+                                        ? "bg-brand-primary text-white shadow-md shadow-brand-primary/20"
+                                        : "bg-neutral-100 text-neutral-500 hover:bg-neutral-200"
+                                    )}
+                                  >
+                                    {group}{!isNaN(parseInt(group)) ? 's' : ''}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Group Selection Area */}
+                            <AnimatePresence>
+                              {activeGroup && (
+                                <motion.div
+                                  initial={{ opacity: 0, y: -10 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  exit={{ opacity: 0, y: -10 }}
+                                  className="flex flex-col gap-2 p-3 bg-neutral-50 rounded-xl border border-neutral-100"
+                                >
+                                  <div className="flex items-center justify-between px-1">
+                                    <span className="text-[10px] font-black uppercase tracking-wider text-brand-primary">
+                                      Select from {activeGroup}{!isNaN(parseInt(activeGroup)) ? 's' : ''}
+                                    </span>
+                                    <button 
+                                      onClick={() => {
+                                        const groupLines = routes.filter(r => {
+                                          if (activeGroup === 'Night') return r.shortName.endsWith('M');
+                                          if (activeGroup === 'Zonal') return r.shortName.startsWith('Z');
+                                          const num = parseInt(r.shortName);
+                                          const groupNum = parseInt(activeGroup);
+                                          return !isNaN(num) && num >= groupNum && num < groupNum + 100;
+                                        }).map(r => r.shortName);
+                                        
+                                        setSelectedLines(prev => {
+                                          const allSelected = groupLines.every(l => prev.includes(l));
+                                          if (allSelected) {
+                                            return prev.filter(l => !groupLines.includes(l));
+                                          }
+                                          return Array.from(new Set([...prev, ...groupLines]));
+                                        });
+                                      }}
+                                      className="text-[9px] font-black uppercase tracking-widest text-neutral-400 hover:text-brand-primary transition-colors"
+                                    >
+                                      Toggle All
+                                    </button>
+                                  </div>
+                                  <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto custom-scrollbar p-1">
+                                    {routes
+                                      .filter(r => {
+                                        if (activeGroup === 'Night') return r.shortName.endsWith('M');
+                                        if (activeGroup === 'Zonal') return r.shortName.startsWith('Z');
+                                        const num = parseInt(r.shortName);
+                                        const groupNum = parseInt(activeGroup);
+                                        return !isNaN(num) && num >= groupNum && num < groupNum + 100;
+                                      })
+                                      .sort(compareRoutes)
+                                      .map(route => (
+                                        <button
+                                          key={route.id}
+                                          onClick={() => handleToggleLineFilter(route.shortName)}
+                                          className={cn(
+                                            "px-2 py-1 rounded-md text-[9px] font-black transition-all border",
+                                            selectedLines.includes(route.shortName)
+                                              ? "bg-brand-primary border-brand-primary text-white"
+                                              : "bg-white border-neutral-200 text-neutral-500 hover:border-brand-primary/30"
+                                          )}
+                                        >
+                                          {route.shortName}
+                                        </button>
+                                      ))}
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+
+                            {/* Specific Selected Lines */}
+                            {selectedLines.length > 0 && (
+                              <div className="flex flex-col gap-2">
+                                <div className="flex items-center justify-between px-1">
+                                  <span className="text-[11px] font-black uppercase tracking-wider text-neutral-500">Your Selection</span>
+                                  <button 
+                                    onClick={() => setSelectedLines([])}
+                                    className="text-[9px] font-black uppercase tracking-widest text-neutral-400 hover:text-red-500 transition-colors"
+                                  >
+                                    Clear
+                                  </button>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {selectedLines.map(line => (
+                                    <button
+                                      key={line}
+                                      onClick={() => handleToggleLineFilter(line)}
+                                      className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-tight bg-brand-primary text-white shadow-sm flex items-center gap-1"
+                                    >
+                                      {line}
+                                      <Check size={10} strokeWidth={4} />
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {isFilterActive && (
+                              <button
+                                onClick={() => {
+                                  setActiveGroup(null);
+                                  setSelectedLines([]);
+                                }}
+                                className="text-[10px] font-black uppercase tracking-widest text-brand-primary mt-2 text-center w-full py-2 bg-brand-primary/5 rounded-lg hover:bg-brand-primary/10 transition-colors"
+                              >
+                                Clear All Filters
+                              </button>
+                            )}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
 
                   {/* List Content */}

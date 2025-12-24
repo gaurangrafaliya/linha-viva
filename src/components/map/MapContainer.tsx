@@ -31,6 +31,9 @@ interface MapContainerProps {
   onSelectRoute: (routeId: string | null) => void;
   isDashboardExpanded: boolean;
   activeDirection?: 0 | 1;
+  
+  // Filter Props
+  selectedLines?: string[];
 }
 
 const luminanceCache = new Map<string, number>();
@@ -66,7 +69,8 @@ export const MapContainer = memo(({
   selectedRouteId,
   onSelectRoute, 
   isDashboardExpanded, 
-  activeDirection = 0 
+  activeDirection = 0,
+  selectedLines = []
 }: MapContainerProps) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -318,44 +322,52 @@ export const MapContainer = memo(({
       if (!source) return;
     }
 
+    const isAnyFilterActive = selectedLines.length > 0;
+
     const geoJsonData: GeoJSON.FeatureCollection = {
       type: 'FeatureCollection',
-      features: positions.map(bus => {
-        const route = routesRef.current.get(bus.line);
-        const routeColor = route?.color ? `#${route.color}` : BRAND_COLORS.primary;
-        const isLight = getLuminance(routeColor) > 0.7;
-        const routeTextColor = isLight ? '#000000' : '#ffffff';
-        const isSelected = bus.id === selectedBus?.id;
-        const routeId = tripsRef.current.get(bus.line) || null;
-        const isOnSelectedRoute = !!selectedRouteId && routeId === selectedRouteId;
-        const busDirection = busDirections.get(bus.id);
-        const isOnSelectedDirection = isOnSelectedRoute && (busDirection === undefined || busDirection === activeDirection);
-        
-        return {
-          type: 'Feature',
-          geometry: {
-            type: 'Point',
-            coordinates: [bus.longitude, bus.latitude],
-          },
-          properties: {
-            id: bus.id,
-            line: bus.line,
-            operator: bus.operator,
-            bearing: bus.bearing,
-            speed: bus.speed,
-            routeColor,
-            routeTextColor,
-            routeId,
-            isOnSelectedRoute,
-            isOnSelectedDirection,
-            sortKey: isSelected ? 3 : (isOnSelectedDirection ? 2 : 1)
-          },
-        };
-      }),
+      features: positions
+        .filter(bus => {
+          if (!isAnyFilterActive) return true;
+          return selectedLines.includes(bus.line);
+        })
+        .map(bus => {
+          const route = routesRef.current.get(bus.line);
+          const routeColor = route?.color ? `#${route.color}` : BRAND_COLORS.primary;
+          const isLight = getLuminance(routeColor) > 0.7;
+          const routeTextColor = isLight ? '#000000' : '#ffffff';
+          const isSelected = bus.id === selectedBus?.id;
+          const routeId = tripsRef.current.get(bus.line) || null;
+          const isOnSelectedRoute = !!selectedRouteId && routeId === selectedRouteId;
+          const busDirection = busDirections.get(bus.id);
+          const isOnSelectedDirection = isOnSelectedRoute && (busDirection === undefined || busDirection === activeDirection);
+          
+          return {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              coordinates: [bus.longitude, bus.latitude],
+            },
+            properties: {
+              id: bus.id,
+              line: bus.line,
+              operator: bus.operator,
+              bearing: bus.bearing,
+              speed: bus.speed,
+              routeColor,
+              routeTextColor,
+              routeId,
+              isOnSelectedRoute,
+              isOnSelectedDirection,
+              matchesFilters: true,
+              sortKey: isSelected ? 4 : (isOnSelectedDirection ? 3 : 2)
+            },
+          };
+        }),
     };
 
     source.setData(geoJsonData);
-  }, [positions, isLoaded, addBusesLayer, selectedRouteId, selectedBus, busDirections, activeDirection]);
+  }, [positions, isLoaded, addBusesLayer, selectedRouteId, selectedBus, busDirections, activeDirection, selectedLines]);
 
   // Load route data when selected route or direction changes
   useEffect(() => {
@@ -596,7 +608,7 @@ export const MapContainer = memo(({
         lastCenteredPosRef.current = null;
       }
     }
-  }, [selectedBus?.id, selectedRouteId, currentRouteData, positions, isLoaded, isDashboardExpanded]);
+  }, [selectedBus?.id, selectedRouteId, currentRouteData, positions, isLoaded, isDashboardExpanded, selectedLines]);
 
   // Update route line for selected route
   useEffect(() => {

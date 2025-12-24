@@ -88,6 +88,11 @@ const App = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [isDashboardExpanded, setIsDashboardExpanded] = useState(true);
   const [activeDirection, setActiveDirection] = useState<0 | 1>(0);
+  
+  // Filter states
+  const [activeGroup, setActiveGroup] = useState<string | null>(null);
+  const [selectedLines, setSelectedLines] = useState<string[]>([]);
+  
   const { positions } = useBusPositions();
   
   const currentStyle = MAP_STYLES.VOYAGER;
@@ -186,6 +191,7 @@ const App = () => {
         onSelectRoute={handleRouteSelect}
         isDashboardExpanded={isDashboardExpanded}
         activeDirection={activeDirection}
+        selectedLines={selectedLines}
       />
       
       <FloatingSearch 
@@ -205,6 +211,10 @@ const App = () => {
         onToggleExpand={handleToggleExpand}
         onDirectionChange={setActiveDirection}
         onSwitchBusForDirection={handleSwitchBusForDirection}
+        activeGroup={activeGroup}
+        setActiveGroup={setActiveGroup}
+        selectedLines={selectedLines}
+        setSelectedLines={setSelectedLines}
       />
     </main>
   );
