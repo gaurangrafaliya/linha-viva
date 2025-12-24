@@ -7,9 +7,17 @@ import { RouteItem } from "./RouteItem";
 import { RouteDetail } from "./RouteDetail";
 import { cn } from "@/lib/utils";
 import { Theme } from "@/constants/mapStyles";
+import { useBusPositions } from "@/hooks/useBusPositions";
+
+interface SelectedBus {
+  id: string;
+  line: string;
+  routeId: string | null;
+}
 
 interface RouteDashboardProps {
   selectedRouteId: string | null;
+  selectedBus: SelectedBus | null;
   onRouteSelect: (routeId: string | null) => void;
   searchTerm: string;
   theme: Theme;
@@ -19,6 +27,7 @@ interface RouteDashboardProps {
 
 export const RouteDashboard = ({ 
   selectedRouteId, 
+  selectedBus,
   onRouteSelect, 
   searchTerm, 
   theme,
@@ -29,6 +38,7 @@ export const RouteDashboard = ({
   const [routes, setRoutes] = useState<GTFSRoute[]>([]);
   const [stops, setStops] = useState<Record<string, string[]>>({}); // routeId -> stopNames[]
   const [loading, setLoading] = useState(true);
+  const { positions } = useBusPositions();
   
   const lookupsRef = useRef<{
     stopsMap: Map<string, string>;
@@ -307,6 +317,8 @@ export const RouteDashboard = ({
                       route={selectedRoute} 
                       onBack={() => onRouteSelect(null)} 
                       isDark={isDark}
+                      selectedBusId={selectedBus?.id}
+                      busPosition={selectedBus ? positions.find(p => p.id === selectedBus.id) || null : null}
                     />
                   )}
                 </motion.div>

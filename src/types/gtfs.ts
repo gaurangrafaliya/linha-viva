@@ -31,6 +31,13 @@ export interface GTFSStopTime {
   stopSequence: number;
 }
 
+export interface GTFSShape {
+  shapeId: string;
+  lat: number;
+  lng: number;
+  sequence: number;
+}
+
 export interface GTFSData {
   stops: GTFSStop[];
   routes: GTFSRoute[];

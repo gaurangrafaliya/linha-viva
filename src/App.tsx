@@ -6,9 +6,15 @@ import { FloatingSearch } from "@/components/dashboard/FloatingSearch";
 import { MAP_STYLES, MapStyleId } from "@/constants/mapStyles";
 import { cn } from "@/lib/utils";
 
+interface SelectedBus {
+  id: string;
+  line: string;
+  routeId: string | null;
+}
+
 const App = () => {
   const [currentStyleId, setCurrentStyleId] = useState<MapStyleId>('VOYAGER');
-  const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
+  const [selectedBus, setSelectedBus] = useState<SelectedBus | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [isDashboardExpanded, setIsDashboardExpanded] = useState(true);
   
@@ -27,8 +33,13 @@ const App = () => {
     setCurrentStyleId(styleId);
   };
 
+  const handleBusSelect = (bus: SelectedBus | null) => {
+    setSelectedBus(bus);
+    if (bus) setIsDashboardExpanded(true);
+  };
+
   const handleRouteSelect = (routeId: string | null) => {
-    setSelectedRouteId(routeId);
+    setSelectedBus(null);
     if (routeId) setIsDashboardExpanded(true);
   };
 
@@ -38,7 +49,7 @@ const App = () => {
 
   const handleClearSearch = () => {
     setSearchTerm("");
-    setSelectedRouteId(null);
+    setSelectedBus(null);
   };
 
   return (
@@ -51,8 +62,9 @@ const App = () => {
     >
       <MapContainer 
         styleUrl={currentStyle.url} 
+        onSelectBus={handleBusSelect}
+        selectedBus={selectedBus}
         onSelectRoute={handleRouteSelect}
-        selectedRouteId={selectedRouteId}
         theme={currentStyle.theme}
       />
       
@@ -77,12 +89,19 @@ const App = () => {
       </div>
 
       <RouteDashboard 
-        selectedRouteId={selectedRouteId}
+        selectedRouteId={selectedBus?.routeId || null}
+        selectedBus={selectedBus}
         onRouteSelect={handleRouteSelect}
         searchTerm={searchTerm}
         theme={currentStyle.theme}
         isExpanded={isDashboardExpanded}
-        onToggleExpand={() => setIsDashboardExpanded(!isDashboardExpanded)}
+        onToggleExpand={() => {
+          const newExpanded = !isDashboardExpanded;
+          setIsDashboardExpanded(newExpanded);
+          if (!newExpanded) {
+            setSelectedBus(null);
+          }
+        }}
       />
     </main>
   );

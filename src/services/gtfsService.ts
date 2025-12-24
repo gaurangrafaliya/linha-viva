@@ -1,4 +1,4 @@
-import { GTFSRoute, GTFSTrip, GTFSStop, GTFSStopTime } from "@/types/gtfs";
+import { GTFSRoute, GTFSTrip, GTFSStop, GTFSStopTime, GTFSShape } from "@/types/gtfs";
 
 const DATA_PATH = '/data/stcp';
 
@@ -27,6 +27,7 @@ let cachedTrips: GTFSTrip[] | null = null;
 let cachedStops: GTFSStop[] | null = null;
 let cachedStopTimes: GTFSStopTime[] | null = null;
 let cachedTripsByRoute: Map<string, GTFSTrip[]> | null = null;
+let cachedShapes: Map<string, GTFSShape[]> | null = null;
 
 export const gtfsService = {
   fetchRoutes: async (): Promise<GTFSRoute[]> => {
@@ -158,6 +159,41 @@ export const gtfsService = {
       direction0: getStopsForDirection(0),
       direction1: getStopsForDirection(1),
     };
+  },
+
+  fetchShape: async (shapeId: string): Promise<GTFSShape[]> => {
+    if (!cachedShapes) {
+      cachedShapes = new Map();
+      try {
+        const response = await fetch(`${DATA_PATH}/shapes.txt`);
+        const text = await response.text();
+        const data = parseCSV(text);
+
+        const shapesByShapeId = new Map<string, GTFSShape[]>();
+        data.forEach(item => {
+          const shapeId = item.shape_id;
+          if (!shapesByShapeId.has(shapeId)) {
+            shapesByShapeId.set(shapeId, []);
+          }
+          shapesByShapeId.get(shapeId)!.push({
+            shapeId,
+            lat: parseFloat(item.shape_pt_lat),
+            lng: parseFloat(item.shape_pt_lon),
+            sequence: parseInt(item.shape_pt_sequence),
+          });
+        });
+
+        shapesByShapeId.forEach((shapes, id) => {
+          shapes.sort((a, b) => a.sequence - b.sequence);
+          cachedShapes!.set(id, shapes);
+        });
+      } catch (error) {
+        console.error('Error fetching GTFS shapes:', error);
+        return [];
+      }
+    }
+
+    return cachedShapes.get(shapeId) || [];
   }
 };
 
