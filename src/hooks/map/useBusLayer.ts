@@ -25,7 +25,6 @@ export const useBusLayer = (
     positionsRef.current = positions;
   }, [positions]);
 
-  // Update GeoJSON source when positions or filters change
   useEffect(() => {
     if (!isLoaded || !mapRef.current) return;
 
@@ -33,14 +32,16 @@ export const useBusLayer = (
     if (!source) return;
 
     const hasFilter = selectedLines.length > 0;
+    const hasSelectedBus = selectedBus !== null;
 
     const features = positions.map(bus => {
       const routeId = tripsRef.current.get(bus.line);
       const route = routeId ? routesRef.current.get(routeId) : null;
       const routeColor = route?.color ? `#${route.color}` : BRAND_COLORS.primary;
       const isFiltered = !hasFilter || selectedLines.includes(bus.line);
+      const isSelected = selectedBus !== null && bus.id === selectedBus.id;
       
-      return {
+      const feature = {
         type: 'Feature' as const,
         id: bus.id,
         properties: {
@@ -49,13 +50,17 @@ export const useBusLayer = (
           bearing: bus.bearing || 0,
           color: routeColor,
           textColor: getLuminance(routeColor) > 0.7 ? '#000000' : '#ffffff',
-          isFiltered
+          isFiltered,
+          hasSelectedBus,
+          isSelected
         },
         geometry: {
           type: 'Point' as const,
           coordinates: [bus.longitude, bus.latitude]
         }
       };
+
+      return feature;
     });
 
     source.setData({
@@ -63,16 +68,52 @@ export const useBusLayer = (
       features
     });
 
-    // Sync selected state
+    positions.forEach(bus => {
+      mapRef.current?.setFeatureState(
+        { source: 'buses', id: bus.id },
+        { selected: false }
+      );
+    });
+
     if (selectedBus) {
       mapRef.current.setFeatureState(
         { source: 'buses', id: selectedBus.id },
         { selected: true }
       );
     }
+
+    setTimeout(() => {
+      if (!mapRef.current) return;
+      
+      const opacityExpression = [
+        'case',
+        ['get', 'isSelected'], 1,
+        ['get', 'hasSelectedBus'], 0.3,
+        ['boolean', ['get', 'isFiltered'], true], 1,
+        0.15
+      ] as any;
+
+      if (mapRef.current.getLayer('bus-circles')) {
+        mapRef.current.setPaintProperty('bus-circles', 'circle-opacity', opacityExpression);
+        mapRef.current.setPaintProperty('bus-circles', 'circle-stroke-opacity', opacityExpression);
+      }
+      if (mapRef.current.getLayer('bus-labels')) {
+        mapRef.current.setPaintProperty('bus-labels', 'text-opacity', opacityExpression);
+      }
+      if (mapRef.current.getLayer('bus-arrows')) {
+        const arrowOpacityExpression = [
+          'case',
+          ['get', 'isSelected'], 0.8,
+          ['get', 'hasSelectedBus'], 0.3,
+          0.8
+        ] as any;
+        mapRef.current.setPaintProperty('bus-arrows', 'icon-opacity', arrowOpacityExpression);
+      }
+
+      mapRef.current.triggerRepaint();
+    });
   }, [positions, isLoaded, selectedLines, selectedBus, mapRef, routesRef, tripsRef]);
 
-  // Center map on selected bus
   useEffect(() => {
     if (!isLoaded || !mapRef.current || !selectedBus) return;
 
@@ -101,9 +142,6 @@ export const useBusLayer = (
     };
   }, [selectedBus?.id, isLoaded, isDashboardExpanded, mapRef]);
 
-  // Helper for direction detection (though we don't return busDirections here yet, 
-  // it could be added if needed by other components. In MapContainer it was used to set state)
-  // Re-implementing the direction detection logic if needed by the caller
   const detectBusDirection = (bus: BusPosition): BusDirection | null => {
     if (!selectedRouteId || !routeStops) return null;
     if (tripsRef.current.get(bus.line) !== selectedRouteId) return null;

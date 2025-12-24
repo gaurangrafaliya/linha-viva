@@ -104,8 +104,20 @@ export const useMapInstance = (
             0
           ],
           'circle-stroke-color': '#000000',
-          'circle-opacity': ['case', ['boolean', ['get', 'isFiltered'], true], 1, 0.15],
-          'circle-stroke-opacity': ['case', ['boolean', ['get', 'isFiltered'], true], 1, 0.15]
+          'circle-opacity': [
+            'case',
+            ['get', 'isSelected'], 1,
+            ['get', 'hasSelectedBus'], 0.3,
+            ['boolean', ['get', 'isFiltered'], true], 1,
+            0.15
+          ],
+          'circle-stroke-opacity': [
+            'case',
+            ['get', 'isSelected'], 1,
+            ['get', 'hasSelectedBus'], 0.3,
+            ['boolean', ['get', 'isFiltered'], true], 1,
+            0.15
+          ]
         }
       });
 
@@ -122,7 +134,13 @@ export const useMapInstance = (
         },
         paint: {
           'text-color': ['get', 'textColor'],
-          'text-opacity': ['case', ['boolean', ['get', 'isFiltered'], true], 1, 0.15]
+          'text-opacity': [
+            'case',
+            ['get', 'isSelected'], 1,
+            ['get', 'hasSelectedBus'], 0.3,
+            ['boolean', ['get', 'isFiltered'], true], 1,
+            0.15
+          ]
         }
       });
 
@@ -136,7 +154,14 @@ export const useMapInstance = (
           'icon-size': 0.5,
           'icon-allow-overlap': true
         },
-        paint: { 'icon-opacity': 0.8 }
+        paint: {
+          'icon-opacity': [
+            'case',
+            ['get', 'isSelected'], 0.8,
+            ['get', 'hasSelectedBus'], 0.3,
+            0.8
+          ]
+        }
       });
 
       setIsLoaded(true);
